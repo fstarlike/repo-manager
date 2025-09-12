@@ -15,7 +15,7 @@
 ### Main Dashboard
 <div align="center">
 
-<img width="800" alt="Main Dashboard - Repository Management Interface" src="https://github.com/user-attachments/assets/979ee077-4d9a-405b-adfb-2a69f4305292" />
+<img width="800" alt="Main Dashboard - Repository Management Interface" src="https://github.com/user-attachments/assets/22b1303d-f87b-42b1-9aba-b60f3f7141d8" />
 
 <p><em>Clean, modern dashboard with repository cards and status indicators</em></p>
 </div>
@@ -23,23 +23,22 @@
 ### Repository Details & Operations
 <div align="center">
 
-<img width="800" alt="Repository Details - Git Operations" src="https://github.com/user-attachments/assets/303b4c99-6f3c-434c-a888-aa076e461533" />
+<img width="800" alt="Repository Details - Git Operations" src="https://github.com/user-attachments/assets/c87eae5a-df6e-43ac-94b9-c64aa316bdae" />
 
 <p><em>Branch list with checkout functionality and search capabilities</em></p>
 </div>
 
 ### Advanced Troubleshooting
 <div align="center">
-
-<img width="800" alt="Troubleshooting System - Diagnostic Tools" src="https://github.com/user-attachments/assets/f5fe9d28-bfe3-440f-830f-6f111338d27c" />
-
+<img width="800" alt="Troubleshooting System - Diagnostic Tools" src="https://github.com/user-attachments/assets/f805ba07-398a-428e-a300-b214833faf3f" />
 <p><em>Comprehensive troubleshooting system with step-by-step guidance</em></p>
 </div>
 
 ### Settings & Configuration
 <div align="center">
 
-<img width="800" alt="Floating Widget - Notifications" src="https://github.com/user-attachments/assets/216a5b79-d503-48b0-8a8c-99ffd8b44dbb" />
+<img width="800" alt="Floating Widget - Notifications" src="https://github.com/user-attachments/assets/db8e205e-58b3-429b-bb4f-b60ad7f06f32" />
+
 
 <p><em>Floating widget and branch-specific notifications system</em></p>
 </div>
