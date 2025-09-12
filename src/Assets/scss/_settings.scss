@@ -1,0 +1,547 @@
+/* ========================================
+   Repository Settings Form - Enhanced Styles
+   ======================================== */
+
+@use "mixins" as *;
+@use "variables" as *;
+
+.repository-settings-form {
+    .form-section {
+        @include card;
+        padding: spacing(6);
+        margin-bottom: spacing(5);
+        position: relative;
+        overflow: hidden;
+        transition: transition(all);
+
+        &::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(
+                90deg,
+                color(primary),
+                color(secondary),
+                color(info)
+            );
+            opacity: 0;
+            transition: transition(opacity);
+        }
+
+        &:hover {
+            transform: translateY(-2px);
+            box-shadow: shadow(lg);
+            border-color: rgba(59, 130, 246, 0.2);
+
+            &::before {
+                opacity: 1;
+            }
+        }
+    }
+
+    .form-section-title {
+        @include flex-center;
+        gap: spacing(3);
+        @include heading(lg, bold);
+        margin-bottom: spacing(5);
+        padding-bottom: spacing(4);
+        border-bottom: 2px solid color(border-primary);
+        position: relative;
+
+        &::after {
+            content: "";
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 40px;
+            height: 2px;
+            background: linear-gradient(
+                90deg,
+                color(primary),
+                color(secondary)
+            );
+            border-radius: border-radius(full);
+        }
+
+        .section-icon {
+            width: 24px;
+            height: 24px;
+            color: color(primary);
+        }
+    }
+
+    .form-group {
+        margin-bottom: spacing(6);
+
+        &:last-child {
+            margin-bottom: 0;
+        }
+    }
+
+    .form-label {
+        display: block;
+        font-size: font-size(sm);
+        font-weight: font-weight(medium);
+        color: color(text-primary);
+        margin-bottom: spacing(2);
+
+        .required {
+            color: color(error);
+            margin-left: spacing(1);
+        }
+    }
+
+    .form-input {
+        @include input-base;
+
+        &.error {
+            @include error-state;
+        }
+
+        &.success {
+            @include success-state;
+        }
+    }
+
+    // Legacy alias for form controls
+    .form-control {
+        @include input-base;
+
+        &.is-valid {
+            border-color: color(success);
+            background-color: color(success-lightest);
+            &:focus {
+                box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+            }
+        }
+
+        &.is-invalid {
+            border-color: color(error);
+            background-color: color(error-lightest);
+            animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+            &:focus {
+                box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+            }
+        }
+
+        &.is-loading {
+            background-repeat: no-repeat;
+            background-position: right spacing(4) center;
+            background-size: 18px;
+            padding-right: spacing(12);
+        }
+    }
+
+    .form-select {
+        @include select-base;
+    }
+
+    .form-textarea {
+        @include input-base;
+        min-height: 100px;
+        resize: vertical;
+    }
+
+    .form-help {
+        font-size: font-size(xs);
+        color: color(text-secondary);
+        margin-top: spacing(1);
+
+        // Legacy behavior: highlight when previous input is focused
+        .form-control:focus + & {
+            color: color(info-dark);
+        }
+
+        &.error {
+            color: color(error);
+        }
+
+        &.success {
+            color: color(success);
+        }
+    }
+
+    .form-actions {
+        @include flex-between;
+        gap: spacing(3);
+        margin-top: spacing(8);
+        padding-top: spacing(6);
+        border-top: 1px solid color(border-primary);
+
+        .btn {
+            min-width: 120px;
+        }
+
+        // Legacy button aliases
+        .git-primary-btn {
+            @include button-primary;
+        }
+
+        .git-secondary-btn {
+            @include button-secondary;
+        }
+    }
+
+    .form-row {
+        @include grid(2, spacing(4));
+        margin-bottom: spacing(4);
+
+        @include respond-below(md) {
+            grid-template-columns: 1fr;
+            gap: spacing(3);
+        }
+
+        .form-group {
+            margin-bottom: 0;
+        }
+    }
+
+    .form-checkbox {
+        @include flex-center;
+        gap: spacing(2);
+
+        input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: color(primary);
+        }
+
+        label {
+            font-size: font-size(sm);
+            color: color(text-primary);
+            cursor: pointer;
+            margin: 0;
+        }
+    }
+
+    .form-radio-group {
+        display: flex;
+        flex-direction: column;
+        gap: spacing(2);
+
+        .form-radio {
+            @include flex-center;
+            gap: spacing(2);
+
+            input[type="radio"] {
+                width: 18px;
+                height: 18px;
+                accent-color: color(primary);
+            }
+
+            label {
+                font-size: font-size(sm);
+                color: color(text-primary);
+                cursor: pointer;
+                margin: 0;
+            }
+        }
+    }
+
+    .form-file-upload {
+        position: relative;
+        display: inline-block;
+        cursor: pointer;
+
+        input[type="file"] {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .upload-area {
+            @include flex-column-center;
+            gap: spacing(2);
+            padding: spacing(8);
+            border: 2px dashed color(border-primary);
+            border-radius: border-radius(lg);
+            background-color: color(bg-secondary);
+            transition: transition(all);
+
+            &:hover {
+                border-color: color(primary);
+                background-color: color(primary-lightest);
+            }
+
+            .upload-icon {
+                width: 48px;
+                height: 48px;
+                color: color(text-tertiary);
+            }
+
+            .upload-text {
+                font-size: font-size(sm);
+                color: color(text-secondary);
+                text-align: center;
+            }
+        }
+    }
+
+    .form-tabs {
+        border-bottom: 1px solid color(border-primary);
+        margin-bottom: spacing(6);
+
+        .tab-list {
+            display: flex;
+            gap: spacing(1);
+
+            .tab-item {
+                padding: spacing(3) spacing(4);
+                border-bottom: 2px solid transparent;
+                font-size: font-size(sm);
+                font-weight: font-weight(medium);
+                color: color(text-secondary);
+                cursor: pointer;
+                transition: transition(all);
+
+                &:hover {
+                    color: color(text-primary);
+                }
+
+                &.active {
+                    color: color(primary);
+                    border-bottom-color: color(primary);
+                }
+            }
+        }
+
+        .tab-content {
+            padding-top: spacing(6);
+        }
+    }
+
+    .form-progress {
+        margin-bottom: spacing(6);
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background-color: color(bg-secondary);
+            border-radius: border-radius(full);
+            overflow: hidden;
+
+            .progress-fill {
+                height: 100%;
+                background: linear-gradient(
+                    90deg,
+                    color(primary),
+                    color(secondary)
+                );
+                border-radius: border-radius(full);
+                transition: width 0.3s ease;
+            }
+        }
+
+        .progress-text {
+            font-size: font-size(xs);
+            color: color(text-secondary);
+            margin-top: spacing(1);
+            text-align: center;
+        }
+    }
+
+    .form-alert {
+        padding: spacing(3) spacing(4);
+        border-radius: border-radius(md);
+        margin-bottom: spacing(4);
+        font-size: font-size(sm);
+
+        &.alert-info {
+            background-color: color(info-lightest);
+            border: 1px solid color(info-lighter);
+            color: color(info-dark);
+        }
+
+        &.alert-warning {
+            background-color: color(warning-lightest);
+            border: 1px solid color(warning-lighter);
+            color: color(warning-dark);
+        }
+
+        &.alert-error {
+            background-color: color(error-lightest);
+            border: 1px solid color(error-lighter);
+            color: color(error-dark);
+        }
+
+        &.alert-success {
+            background-color: color(success-lightest);
+            border: 1px solid color(success-lighter);
+            color: color(success-dark);
+        }
+    }
+
+    .form-loading {
+        @include loading-state;
+        min-height: 200px;
+    }
+}
+
+// Dark theme adjustments
+[data-theme="dark"] {
+    .repository-settings-form {
+        .form-section {
+            &::before {
+                background: linear-gradient(
+                    90deg,
+                    color(primary, "dark"),
+                    color(secondary, "dark"),
+                    color(info, "dark")
+                );
+            }
+
+            &:hover {
+                border-color: rgba(59, 130, 246, 0.3);
+            }
+        }
+
+        .form-section-title {
+            &::after {
+                background: linear-gradient(
+                    90deg,
+                    color(primary, "dark"),
+                    color(secondary, "dark")
+                );
+            }
+        }
+    }
+}
+
+/* ========================================
+   Legacy Settings Form Aliases (settings-form)
+   ======================================== */
+.settings-form {
+    .form-section {
+        @include card;
+        padding: spacing(6);
+        margin-bottom: spacing(8);
+        transition: transition(all);
+        &:hover {
+            box-shadow: shadow(md);
+            transform: translateY(-1px);
+        }
+    }
+
+    .form-section-title {
+        @include flex-start;
+
+        gap: spacing(3);
+        @include heading(lg, semibold);
+        margin-bottom: spacing(6);
+        padding-bottom: spacing(3);
+        border-bottom: 1px solid color(border-primary);
+        position: relative;
+        &::after {
+            content: "";
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            width: 50px;
+            height: 2px;
+            background: linear-gradient(
+                90deg,
+                color(primary),
+                color(primary-light)
+            );
+            border-radius: 1px;
+        }
+    }
+
+    .form-group {
+        margin-bottom: spacing(6);
+        position: relative;
+    }
+    .form-group label {
+        font-weight: font-weight(semibold);
+        color: color(text-primary);
+        font-size: font-size(sm);
+    }
+
+    .form-control {
+        @include input-base;
+        border-width: 2px;
+        font-size: font-size(base);
+    }
+    .form-control:focus {
+        transform: translateY(-1px);
+        background: color(bg-primary);
+    }
+
+    .form-control.is-valid {
+        border-color: color(success);
+        background: rgba(16, 185, 129, 0.05);
+        &:focus {
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+        }
+    }
+
+    .form-control.is-invalid {
+        border-color: color(error);
+        background: rgba(239, 68, 68, 0.05);
+        animation: shake 0.5s ease-in-out;
+        &:focus {
+            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+        }
+    }
+
+    .form-control.is-loading {
+        background-repeat: no-repeat;
+        background-position: right spacing(3) center;
+        background-size: 16px;
+        padding-right: spacing(10);
+    }
+
+    .form-help {
+        margin-top: spacing(2);
+        font-size: font-size(sm);
+        color: color(text-secondary);
+        line-height: line-height(relaxed);
+        transition: transition(all);
+        padding: spacing(2);
+        background: rgba(37, 99, 235, 0.05);
+        border-radius: border-radius(base);
+        border-left: 3px solid color(primary);
+        margin-left: spacing(1);
+    }
+}
+
+[data-theme="dark"] .settings-form {
+    .form-section {
+        background: color(bg-secondary, "dark");
+        border-color: color(border-primary, "dark");
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+    .form-control {
+        background: color(bg-primary, "dark");
+        border-color: color(border-primary, "dark");
+        color: color(text-primary, "dark");
+    }
+    .form-control:focus {
+        border-color: color(primary, "dark");
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        background: color(bg-secondary, "dark");
+    }
+    .form-help {
+        background: rgba(59, 130, 246, 0.1);
+        border-left-color: color(primary-light, "dark");
+        color: color(text-secondary, "dark");
+    }
+}
+
+[dir="rtl"] .settings-form {
+    .form-section-title::after {
+        left: auto;
+        right: 0;
+    }
+    .form-help {
+        border-left: none;
+        border-right: 3px solid color(primary);
+        margin-left: 0;
+        margin-right: spacing(1);
+    }
+}

@@ -1,0 +1,76 @@
+{
+    "name": "repo-manager/Plugin",
+    "description": "Professional Git repository management for WordPress with enhanced security and modern UI",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "keywords": [
+        "wordpress",
+        "plugin",
+        "git",
+        "repository",
+        "version-control",
+        "developer-tools"
+    ],
+    "homepage": "https://github.com/fstarlike/repo-manager",
+    "authors": [
+        {
+            "name": "Farzad Hoseinzadeh",
+            "email": "fstarlike@gmail.com",
+            "homepage": "https://github.com/fstarlike",
+            "role": "Developer"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/fstarlike/repo-manager/issues",
+        "source": "https://github.com/fstarlike/repo-manager",
+        "docs": "https://github.com/fstarlike/repo-manager#readme"
+    },
+    "autoload": {
+        "psr-4": {
+            "WPGitManager\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "WPGitManager\\Tests\\": "tests/"
+        }
+    },
+    "require": {
+        "php": ">=7.4",
+        "wordpress": ">=5.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.5",
+        "yoast/phpunit-polyfills": "^1.0",
+        "wp-cli/wp-cli-bundle": "^2.8"
+    },
+    "config": {
+        "optimize-autoloader": true
+    },
+    "scripts": {
+        "post-install-cmd": [
+            "WPGitManager\\Infrastructure\\Autoloader::register"
+        ],
+        "post-update-cmd": [
+            "WPGitManager\\Infrastructure\\Autoloader::register"
+        ],
+        "test": "phpunit",
+        "test-coverage": "phpunit --coverage-html coverage",
+        "make-pot": "wp i18n make-pot . languages/repo-manager.pot --domain=repo-manager",
+        "make-po": "wp i18n make-pot . languages/repo-manager.pot --domain=repo-manager && echo 'POT file generated successfully!'",
+        "update-pot": "wp i18n make-pot . languages/repo-manager.pot --domain=repo-manager --force",
+        "make-mo": "wp i18n make-mo languages/repo-manager.pot languages/",
+        "build-languages": "composer make-pot && composer make-mo",
+        "build": "npm run build",
+        "build:css": "npm run build:css",
+        "build:js": "npm run build:js",
+        "dev": "npm run dev",
+        "dev:css": "npm run dev:css",
+        "dev:js": "npm run dev:js",
+        "install-assets": "npm install",
+        "clean": "npm run clean",
+        "lint": "phpcs --standard=WordPress src/",
+        "lint-fix": "phpcbf --standard=WordPress src/",
+        "security-scan": "composer audit"
+    }
+}

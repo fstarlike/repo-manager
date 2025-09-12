@@ -1,0 +1,412 @@
+/* ========================================
+   Repo Manager - SCSS Mixins
+   ======================================== */
+
+@use "sass:map";
+@use "variables" as *;
+
+// Media Query Mixins
+@mixin respond-to($breakpoint) {
+    @if map.has-key($breakpoints, $breakpoint) {
+        @media (min-width: map.get($breakpoints, $breakpoint)) {
+            @content;
+        }
+    } @else {
+        @warn "Unfortunately, no value could be retrieved from `#{$breakpoint}`. "
+        + "Available breakpoints are: #{map.keys($breakpoints)}.";
+    }
+}
+
+@mixin respond-below($breakpoint) {
+    @if map.has-key($breakpoints, $breakpoint) {
+        @media (max-width: map.get($breakpoints, $breakpoint) - 1px) {
+            @content;
+        }
+    } @else {
+        @warn "Unfortunately, no value could be retrieved from `#{$breakpoint}`. "
+        + "Available breakpoints are: #{map.keys($breakpoints)}.";
+    }
+}
+
+// Flexbox Mixins
+@mixin flex-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+@mixin flex-start {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+@mixin flex-between {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+@mixin flex-column {
+    display: flex;
+    flex-direction: column;
+}
+
+@mixin flex-column-center {
+    @include flex-column;
+    align-items: center;
+    justify-content: center;
+}
+
+// Button Mixins
+@mixin button-base {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: spacing(2);
+    padding: spacing(2) spacing(4);
+    border: 1px solid transparent;
+    border-radius: border-radius(md);
+    font-family: $font-family-sans;
+    font-size: font-size(sm);
+    font-weight: font-weight(medium);
+    line-height: line-height(none);
+    text-decoration: none;
+    cursor: pointer;
+    transition: transition(all);
+    user-select: none;
+    white-space: nowrap;
+
+    &:focus {
+        outline: 2px solid color(border-focus);
+        outline-offset: 2px;
+    }
+
+    &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+}
+
+@mixin button-primary {
+    @include button-base;
+    background-color: color(primary);
+    color: color(white);
+    border-color: color(primary);
+
+    &:hover:not(:disabled) {
+        background-color: color(primary-dark);
+        border-color: color(primary-dark);
+    }
+
+    &:active:not(:disabled) {
+        background-color: color(primary-dark);
+        border-color: color(primary-dark);
+        transform: translateY(1px);
+    }
+}
+
+@mixin button-secondary {
+    @include button-base;
+    background-color: color(bg-primary);
+    color: color(text-primary);
+    border-color: color(border-primary);
+
+    &:hover:not(:disabled) {
+        background-color: color(bg-secondary);
+        border-color: color(border-secondary);
+    }
+
+    &:active:not(:disabled) {
+        background-color: color(bg-tertiary);
+        transform: translateY(1px);
+    }
+}
+
+@mixin button-ghost {
+    @include button-base;
+    background-color: transparent;
+    color: color(text-primary);
+    border-color: transparent;
+
+    &:hover:not(:disabled) {
+        background-color: color(bg-secondary);
+    }
+
+    &:active:not(:disabled) {
+        background-color: color(bg-tertiary);
+    }
+}
+
+@mixin button-danger {
+    @include button-base;
+    background-color: color(error);
+    color: color(white);
+    border-color: color(error);
+
+    &:hover:not(:disabled) {
+        background-color: color(error-dark);
+        border-color: color(error-dark);
+    }
+
+    &:active:not(:disabled) {
+        background-color: color(error-dark);
+        transform: translateY(1px);
+    }
+}
+
+// Card Mixins
+@mixin card {
+    background-color: color(bg-primary);
+    border: 1px solid color(border-primary);
+    border-radius: border-radius(lg);
+    box-shadow: shadow(sm);
+    overflow: hidden;
+}
+
+@mixin card-hover {
+    @include card;
+    transition: transition(all);
+
+    &:hover {
+        box-shadow: shadow(md);
+        transform: translateY(-1px);
+    }
+}
+
+// Form Mixins
+@mixin input-base {
+    display: block;
+    width: 100%;
+    padding: spacing(2) spacing(3);
+    border: 1px solid color(border-primary);
+    border-radius: border-radius(md);
+    background-color: color(bg-primary);
+    color: color(text-primary);
+    font-family: $font-family-sans;
+    font-size: font-size(sm);
+    line-height: line-height(normal);
+    transition: transition(colors);
+
+    &::placeholder {
+        color: color(text-tertiary);
+    }
+
+    &:focus {
+        outline: none;
+        border-color: color(border-focus);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+
+    &:disabled {
+        background-color: color(bg-secondary);
+        color: color(text-tertiary);
+        cursor: not-allowed;
+    }
+
+    &.error {
+        border-color: color(error);
+
+        &:focus {
+            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+        }
+    }
+}
+
+@mixin select-base {
+    @include input-base;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right spacing(2) center;
+    background-repeat: no-repeat;
+    background-size: 1.5em 1.5em;
+    padding-right: spacing(10);
+    appearance: none;
+}
+
+// Layout Mixins
+@mixin container {
+    width: 100%;
+    max-width: map.get($container-max-widths, xl);
+    margin: 0 auto;
+    padding: 0 spacing(4);
+
+    @include respond-to(sm) {
+        padding: 0 spacing(6);
+    }
+
+    @include respond-to(lg) {
+        padding: 0 spacing(8);
+    }
+}
+
+@mixin grid($columns: $grid-columns, $gap: $grid-gutter-width) {
+    display: grid;
+    grid-template-columns: repeat($columns, 1fr);
+    gap: $gap;
+}
+
+@mixin grid-col($span: 1) {
+    grid-column: span $span;
+}
+
+// Typography Mixins
+@mixin heading($size: "2xl", $weight: "bold") {
+    font-size: font-size($size);
+    font-weight: font-weight($weight);
+    line-height: line-height(tight);
+    color: color(text-primary);
+    margin: 0;
+}
+
+@mixin text-truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@mixin text-clamp($lines: 2) {
+    display: -webkit-box;
+    -webkit-line-clamp: $lines;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+// Animation Mixins
+@mixin fade-in($duration: map.get($animation-duration, normal)) {
+    animation: fadeIn $duration ease-in-out;
+}
+
+@mixin slide-up($duration: map.get($animation-duration, normal)) {
+    animation: slideUp $duration ease-out;
+}
+
+@mixin pulse($duration: 2s) {
+    animation: pulse $duration cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+// Utility Mixins
+@mixin sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+@mixin clearfix {
+    &::after {
+        content: "";
+        display: table;
+        clear: both;
+    }
+}
+
+@mixin aspect-ratio($width, $height) {
+    position: relative;
+
+    &::before {
+        content: "";
+        display: block;
+        padding-top: percentage($height / $width);
+    }
+
+    > * {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+    }
+}
+
+// Theme Mixins
+@mixin theme-light {
+    @each $name, $value in $colors {
+        --gm-#{$name}: #{$value};
+    }
+}
+
+@mixin theme-dark {
+    @each $name, $value in $dark-colors {
+        --gm-#{$name}: #{$value};
+    }
+}
+
+// Component State Mixins
+@mixin loading-state {
+    position: relative;
+    pointer-events: none;
+
+    &::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 1rem;
+        height: 1rem;
+        margin: -0.5rem 0 0 -0.5rem;
+        border: 2px solid color(border-primary);
+        border-top-color: color(primary);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+}
+
+@mixin error-state {
+    border-color: color(error);
+    background-color: color(error-lightest);
+
+    &:focus {
+        box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+    }
+}
+
+@mixin success-state {
+    border-color: color(success);
+    background-color: color(success-lightest);
+
+    &:focus {
+        box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+    }
+}
+
+// Keyframes
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(1rem);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pulse {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
