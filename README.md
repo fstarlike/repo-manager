@@ -20,10 +20,10 @@
 <p><em>Clean, modern dashboard with repository cards and status indicators</em></p>
 </div>
 
-### Repository Details & Operations
+### Repository Branches - Git Operations
 <div align="center">
 
-<img width="800" alt="Repository Details - Git Operations" src="https://github.com/user-attachments/assets/c87eae5a-df6e-43ac-94b9-c64aa316bdae" />
+<img width="800" alt="Repository Branches - Git Operations" src="https://github.com/user-attachments/assets/c87eae5a-df6e-43ac-94b9-c64aa316bdae" />
 
 <p><em>Branch list with checkout functionality and search capabilities</em></p>
 </div>
@@ -34,7 +34,7 @@
 <p><em>Comprehensive troubleshooting system with step-by-step guidance</em></p>
 </div>
 
-### Settings & Configuration
+### Floating Widget
 <div align="center">
 
 <img width="800" alt="Floating Widget - Notifications" src="https://github.com/user-attachments/assets/db8e205e-58b3-429b-bb4f-b60ad7f06f32" />
