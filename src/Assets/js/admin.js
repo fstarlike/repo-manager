@@ -37,6 +37,7 @@ class GitManager {
         this.directorySelectorTarget = "#add-repo-path";
         // Initialize theme from storage (defaults handled in getStoredTheme)
         this.theme = this.getStoredTheme();
+        this.urlAutofillTimer = null; // Debounce timer for URL autofill
         this.init();
     }
 
@@ -6847,6 +6848,83 @@ class GitManager {
                     : "#Other";
             badgeElement.className = `repo-hashtag ${repo.repoType}`;
             badgeElement.textContent = badgeText;
+        }
+    }
+
+    setupUrlAutoFill() {
+        const urlInput = document.getElementById("add-repo-url");
+        if (!urlInput) return;
+
+        urlInput.addEventListener("input", (e) => {
+            clearTimeout(this.urlAutofillTimer);
+            this.urlAutofillTimer = setTimeout(
+                () => this.parseAndFillRepoUrl(e.target.value),
+                300
+            );
+        });
+    }
+
+    /**
+     * Parse Git URL and auto-fill path/branch
+     */
+    parseAndFillRepoUrl(url) {
+        if (!url || url.trim() === "") {
+            return;
+        }
+
+        const patterns = [
+            // HTTPS
+            /^(?:https?:\/\/)(?:[^\/]+@)?([^\/]+)\/([^\/]+)\/([^\/]+)(?:\.git)?$/,
+            // SSH
+            /^(?:git@)([^:]+):([^\/]+)\/([^\/]+)(?:\.git)?$/,
+        ];
+
+        let matches = null;
+        for (const pattern of patterns) {
+            matches = url.match(pattern);
+            if (matches) break;
+        }
+
+        if (matches) {
+            let pathPopulated = false;
+            let branchPopulated = false;
+
+            const repoName = matches[3].replace(/\.git$/, "");
+            const pathInput = document.getElementById("add-repo-path");
+            const branchInput = document.getElementById("add-repo-branch");
+            const nameInput = document.getElementById("add-repo-name");
+
+            if (
+                pathInput &&
+                (!pathInput.value || pathInput.value.trim() === "")
+            ) {
+                const defaultPath = `wp-content/plugins/${repoName}`;
+                pathInput.value = defaultPath;
+                pathPopulated = true;
+            }
+
+            if (
+                nameInput &&
+                (!nameInput.value || nameInput.value.trim() === "")
+            ) {
+                nameInput.value = repoName;
+            }
+
+            if (
+                branchInput &&
+                (!branchInput.value || branchInput.value.trim() === "")
+            ) {
+                branchInput.value = "main";
+                branchPopulated = true;
+            }
+
+            if (pathPopulated || branchPopulated) {
+                this.showNotification(
+                    `Auto-filled: Path: ${pathInput.value}, Branch: ${branchInput.value}`,
+                    "info",
+                    3000
+                );
+            }
         }
     }
 }

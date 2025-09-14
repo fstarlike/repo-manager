@@ -602,6 +602,11 @@ class MultiRepoAjax
             // Add repository name to the target path
             $absolutePath = rtrim($absolutePath, '/\\') . DIRECTORY_SEPARATOR . $data['name'];
 
+            // Pre-flight check: ensure destination does not exist or is an empty directory
+            if (is_dir($absolutePath) && count(array_diff(scandir($absolutePath), ['.', '..'])) > 0) {
+                wp_send_json_error('Destination path already exists and is not an empty directory. Please choose a different location or clear the target folder.');
+            }
+
             // Validate the final target path
             if (! RepositoryManager::instance()->validatePath($absolutePath)) {
                 wp_send_json_error('Invalid target path');
