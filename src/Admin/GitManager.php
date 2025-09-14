@@ -166,7 +166,7 @@ class GitManager
      */
     public static function isNewRepository(string $repoPath): bool
     {
-        if (!is_dir($repoPath . '/.git')) {
+        if (!\WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($repoPath)) {
             return false;
         }
 
@@ -1428,8 +1428,8 @@ class GitManager
                 throw new \Exception('Repository directory does not exist: ' . $repository->path);
             }
 
-            // Check if .git directory exists
-            if (!is_dir($repository->path . '/.git')) {
+            // Check if this is a Git repository (supports worktrees)
+            if (!\WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($repository->path)) {
                 throw new \Exception('Not a valid Git repository: .git directory not found');
             }
 
@@ -1531,7 +1531,7 @@ class GitManager
                 }
 
                 // Added is_readable check for better error handling
-                if (!is_readable($repo->path) || !is_dir($repo->path . '/.git')) {
+                if (!is_readable($repo->path) || !\WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($repo->path)) {
                     $results[$repo->id] = [
                         'status'        => null,
                         'status_error'  => 'Repository path not readable or not a git repository.',

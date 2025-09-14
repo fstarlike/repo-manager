@@ -199,8 +199,8 @@ class SecureGitRunner
             throw new \InvalidArgumentException('Repository path must be within WordPress content directory');
         }
 
-        // Check if it's a valid Git repository
-        if (!is_dir($realPath . '/.git')) {
+        // Check if it's a valid Git repository (accepts .git directory or file-based worktree)
+        if (!self::isGitRepositoryPath($realPath)) {
             $safeRepo = function_exists('sanitize_text_field') ? sanitize_text_field($repoPath) : $repoPath;
             throw new \InvalidArgumentException(sprintf('Not a valid Git repository: %s', esc_html($safeRepo)));
         }
@@ -468,7 +468,8 @@ class SecureGitRunner
             $cmd       = $envPrefix . 'git clone ' . escapeshellarg($remoteUrl) . ' ' . escapeshellarg($targetDirectory) . ' 2>&1';
             $result    = self::executeCommand($cmd);
 
-            $success = (0 === $result['exit_code']) && is_dir(rtrim($targetDirectory, '\\/') . '/.git');
+            $repoPath  = rtrim($targetDirectory, '\\/');
+            $success   = (0 === $result['exit_code']) && self::isGitRepositoryPath($repoPath);
 
             return [
                 'success'        => $success,
@@ -480,6 +481,40 @@ class SecureGitRunner
         } catch (\Exception $exception) {
             return ['success' => false, 'output' => 'Clone failed: ' . $exception->getMessage(), 'cmd' => 'clone'];
         }
+    }
+
+    /**
+     * Determine if a path represents a Git repository.
+     * Accepts both classic ".git" directory and file-based worktree layouts where ".git" is a file.
+     */
+    public static function isGitRepositoryPath(string $path): bool
+    {
+        $path = rtrim($path, '\\/');
+        if ('' === $path || '0' === $path) {
+            return false;
+        }
+
+        // 1) Fast checks: .git directory or .git file exists
+        if (is_dir($path . '/.git')) {
+            return true;
+        }
+
+        if (is_file($path . '/.git')) {
+            // Some worktrees store a file containing "gitdir: <actual path>"
+            $contents = @file_get_contents($path . '/.git');
+            if (false !== $contents && preg_match('/^gitdir:\s*(.+)$/mi', (string) $contents)) {
+                return true;
+            }
+        }
+
+        // 2) Fallback: ask git if this is inside a work tree
+        $probe = self::runInDirectory($path, 'rev-parse --is-inside-work-tree');
+        if ($probe['success']) {
+            $out = strtolower(trim((string) ($probe['output'] ?? '')));
+            return ('true' === $out);
+        }
+
+        return false;
     }
 
     /**

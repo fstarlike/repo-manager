@@ -353,8 +353,8 @@ class RepositoryController
                 throw new \Exception('Invalid repository path');
             }
 
-            // Check if it's a valid Git repository
-            if (!is_dir($path . '/.git')) {
+            // Check if it's a valid Git repository (supports .git dir or file)
+            if (! \WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($path)) {
                 throw new \Exception('Not a valid Git repository');
             }
 

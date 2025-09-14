@@ -564,7 +564,7 @@ class MultiRepoAjax
 
         if ($isExistingRepo) {
             // For existing repositories, validate that it's actually a Git repository
-            if (! is_dir($absolutePath . '/.git')) {
+            if (! \WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($absolutePath)) {
                 wp_send_json_error('Selected path is not a Git repository');
             }
 
@@ -1108,7 +1108,7 @@ class MultiRepoAjax
             wp_send_json_error('Invalid path');
         }
 
-        if (! is_dir($absolutePath . '/.git')) {
+        if (! \WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($absolutePath)) {
             wp_send_json_error('Selected path is not a Git repository');
         }
 
@@ -2214,7 +2214,7 @@ class MultiRepoAjax
             wp_send_json_error('Repository path does not exist');
         }
 
-        if (!is_dir($repo->path . '/.git')) {
+        if (! \WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($repo->path)) {
             wp_send_json_error('Not a git repository');
         }
 
@@ -2799,7 +2799,7 @@ class MultiRepoAjax
 
             // Check for .git directory
             $gitDir = $repoPath . '/.git';
-            if (! is_dir($gitDir)) {
+            if (! is_dir($gitDir) && ! is_file($gitDir)) {
                 return [
                     'status'   => 'error',
                     'message'  => 'Not a Git repository: ' . $repoPath,
@@ -2984,7 +2984,7 @@ class MultiRepoAjax
 
             // Check .git directory permissions
             $gitDir = $repoPath . '/.git';
-            if (is_dir($gitDir)) {
+            if (is_dir($gitDir) || is_file($gitDir)) {
                 $gitPerms    = fileperms($gitDir);
                 $gitPermsOct = substr(sprintf('%o', $gitPerms), -4);
 
@@ -3182,7 +3182,7 @@ class MultiRepoAjax
     private function checkGitConfig(string $repoPath): array
     {
         // Check if this is a Git repository first
-        if (! is_dir($repoPath . '/.git')) {
+        if (! \WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($repoPath)) {
             return [
                 'status'   => 'error',
                 'message'  => 'Not a Git repository',
@@ -3230,7 +3230,7 @@ class MultiRepoAjax
     private function testRemoteConnection(string $repoPath): array
     {
         // Check if this is a Git repository first
-        if (! is_dir($repoPath . '/.git')) {
+        if (! \WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($repoPath)) {
             return [
                 'status'   => 'error',
                 'message'  => 'Not a Git repository',
@@ -3451,7 +3451,7 @@ class MultiRepoAjax
         }
 
         // Verify the clone was successful
-        if (! is_dir($repo->path . '/.git')) {
+        if (! \WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($repo->path)) {
             wp_send_json_error('Repository was cloned but .git directory is missing. The clone may have failed.');
         }
 
@@ -3505,7 +3505,7 @@ class MultiRepoAjax
                 }
 
                 // Check if .git directory exists
-                if (!is_dir($repo->path . '/.git')) {
+                if (! \WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($repo->path)) {
                     $results[$repo->id] = [
                         'status'        => null,
                         'status_error'  => 'Not a valid Git repository: .git directory not found',
