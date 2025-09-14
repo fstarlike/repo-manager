@@ -719,9 +719,10 @@
                 this.disableButtons();
 
                 const response = await this.makeAjaxRequest(
-                    "git_manager_repo_push",
+                    "git_manager_repo_git",
                     {
                         id: this.currentRepo.id,
+                        op: "pull",
                     }
                 );
 
@@ -765,9 +766,10 @@
                 this.disableButtons();
 
                 const response = await this.makeAjaxRequest(
-                    "git_manager_repo_push",
+                    "git_manager_repo_git",
                     {
                         id: this.currentRepo.id,
+                        op: "push",
                     }
                 );
 
@@ -2003,7 +2005,7 @@
                 }
 
                 const response = await this.makeAjaxRequest(
-                    "git_manager_repo_push",
+                    "git_manager_pull",
                     {
                         id: repoId,
                     }

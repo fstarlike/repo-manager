@@ -883,11 +883,7 @@ class GitController
                 $args[] = sanitize_text_field($data['branch_name'] ?? '');
                 return $args;
             case 'delete':
-                $args = [];
-                $args[] = empty($data['force']) ? '-d' : '-D';
-
-                $args[] = sanitize_text_field($data['branch_name'] ?? '');
-                return $args;
+                return [empty($data['force']) ? '-d' : '-D', sanitize_text_field($data['branch_name'] ?? '')];
             case 'list':
             default:
                 return ['-a', '-v'];

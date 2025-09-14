@@ -871,6 +871,7 @@ class MultiRepoAjax
         if (!$repo instanceof Repository) {
             wp_send_json_error('Repository not found');
         }
+
         $repo_name = $repo->name;
 
         // Delete from RepositoryManager
@@ -1863,7 +1864,8 @@ class MultiRepoAjax
 
         // Try multiple nonce verification methods
         $nonce                 = sanitize_text_field(wp_unslash($_POST['nonce'] ?? ''));
-        $action_specific_valid = wp_verify_nonce($nonce, 'git_manager_action');
+        // Accept both action-specific and general nonces for compatibility
+        $action_specific_valid = wp_verify_nonce($nonce, 'git_manager_pull');
         $general_nonce_valid   = wp_verify_nonce($nonce, 'git_manager_action');
 
         if (! $action_specific_valid && ! $general_nonce_valid) {

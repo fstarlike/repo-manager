@@ -130,25 +130,36 @@ class GitCommandRunner
         }
 
         // Execute with timeout and additional security
-        $out = self::executeCommand($cmd);
+        $result = self::executeCommand($cmd);
 
-        if (null !== $out) {
-            $out = preg_replace('/(ghp_\w{36})/', '[masked]', $out);
-            $out = preg_replace('/(gho_\w{36})/', '[masked]', $out);
-            $out = preg_replace('/(ghu_\w{36})/', '[masked]', $out);
-            $out = preg_replace('/(ghr_\w{36})/', '[masked]', $out);
-            $out = preg_replace('/([A-Za-z0-9]{40})/', '[masked]', $out);
-            $out = preg_replace('/([A-Za-z0-9]{64})/', '[masked]', $out);
-            $out = preg_replace('#(https?://)([^:@\s]{2,}):([^@\s]{2,})@#', '$1$2:[masked]@', $out);
+        $output   = null;
+        $exitCode = null;
+        if (null !== $result) {
+            $output   = $result['output'] ?? '';
+            $exitCode = $result['exit_code'] ?? null;
+
+            // Mask sensitive info
+            $output = preg_replace('/(ghp_\w{36})/', '[masked]', $output);
+            $output = preg_replace('/(gho_\w{36})/', '[masked]', $output);
+            $output = preg_replace('/(ghu_\w{36})/', '[masked]', $output);
+            $output = preg_replace('/(ghr_\w{36})/', '[masked]', $output);
+            $output = preg_replace('/([A-Za-z0-9]{40})/', '[masked]', $output);
+            $output = preg_replace('/([A-Za-z0-9]{64})/', '[masked]', $output);
+            $output = preg_replace('#(https?://)([^:@\s]{2,}):([^@\s]{2,})@#', '$1$2:[masked]@', $output);
         }
 
-        return ['success' => true, 'output' => $out, 'cmd' => $gitArgs];
+        return [
+            'success'   => (0 === (int) $exitCode),
+            'output'    => $output,
+            'cmd'       => $gitArgs,
+            'exit_code' => $exitCode,
+        ];
     }
 
     /**
      * Execute command with additional security measures and improved timeout handling
      */
-    private static function executeCommand(string $cmd): ?string
+    private static function executeCommand(string $cmd): ?array
     {
         // Set execution time limit based on command type
         $maxExecutionTime = self::getCommandTimeout($cmd);
@@ -234,10 +245,13 @@ class GitCommandRunner
         fclose($pipes[2]);
 
         // Get exit code
-        proc_close($process);
+        $exitCode = proc_close($process);
 
-        // Return output or error
-        return $output ?: $error;
+        // Return structured result
+        return [
+            'output'    => ($output !== '' ? $output : $error),
+            'exit_code' => $exitCode,
+        ];
     }
 
     /**

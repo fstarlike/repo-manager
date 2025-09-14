@@ -59,6 +59,7 @@ class SecureGitRunner
     private const RATE_LIMIT_OPTION       = 'git_manager_rate_limits';
 
     private const RATE_LIMIT_WINDOW       = 60;
+
      // 1 minute
     private const RATE_LIMIT_MAX_REQUESTS = 10; // Max 10 requests per minute per user
 
