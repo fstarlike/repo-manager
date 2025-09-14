@@ -1863,7 +1863,7 @@ class MultiRepoAjax
         }
 
         // Try multiple nonce verification methods
-        $nonce                 = sanitize_text_field(wp_unslash($_POST['nonce'] ?? ''));
+        $nonce = sanitize_text_field(wp_unslash($_POST['nonce'] ?? ''));
         // Accept both action-specific and general nonces for compatibility
         $action_specific_valid = wp_verify_nonce($nonce, 'git_manager_pull');
         $general_nonce_valid   = wp_verify_nonce($nonce, 'git_manager_action');
@@ -2220,7 +2220,7 @@ class MultiRepoAjax
 
         // Get current branch efficiently
         $currentBranch = $this->getCurrentBranch($repo->path);
-        if ($currentBranch === '' || $currentBranch === '0') {
+        if ('' === $currentBranch || '0' === $currentBranch) {
             wp_send_json_success([]);
             return;
         }
@@ -2321,7 +2321,7 @@ class MultiRepoAjax
     private function parseDetailedCommits(string $output, string $separator): array
     {
         $output = trim($output);
-        if ($output === '' || $output === '0') {
+        if ('' === $output || '0' === $output) {
             return [];
         }
 
@@ -2359,7 +2359,7 @@ class MultiRepoAjax
     private function parseSimpleCommits(string $output): array
     {
         $output = trim($output);
-        if ($output === '' || $output === '0') {
+        if ('' === $output || '0' === $output) {
             return [];
         }
 
@@ -2501,7 +2501,7 @@ class MultiRepoAjax
         ];
 
         // Remove automatic permission changes for safety
-        $results = array_map(fn($cmd) => [
+        $results = array_map(fn ($cmd) => [
             'command' => $cmd,
             'result'  => 'skipped (unsafe) — run manually if you understand the risk',
         ], $commands);

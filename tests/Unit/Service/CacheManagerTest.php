@@ -52,7 +52,7 @@ class CacheManagerTest extends TestCase
     public function testRememberCache()
     {
         $key      = 'test-remember-key';
-        $callback = (fn() => 'callback result');
+        $callback = (fn () => 'callback result');
 
         $result1 = $this->cacheManager->remember($key, $callback);
         $result2 = $this->cacheManager->remember($key, $callback);
@@ -67,7 +67,7 @@ class CacheManagerTest extends TestCase
         $repoPath = '/test/repo';
         $command  = 'status';
         $args     = ['--porcelain'];
-        $callback = (fn() => 'git output');
+        $callback = (fn () => 'git output');
 
         $result = $this->cacheManager->cacheGitResult($repoPath, $command, $args, $callback);
         $this->assertEquals('git output', $result);
@@ -77,7 +77,7 @@ class CacheManagerTest extends TestCase
     {
         $repoId   = 'test-repo-123';
         $dataType = 'branches';
-        $callback = (fn() => ['main', 'develop', 'feature']);
+        $callback = (fn () => ['main', 'develop', 'feature']);
 
         $result = $this->cacheManager->cacheRepositoryData($repoId, $dataType, $callback);
         $this->assertEquals(['main', 'develop', 'feature'], $result);
@@ -88,8 +88,8 @@ class CacheManagerTest extends TestCase
         $repoId = 'test-repo-456';
 
         // Cache some data
-        $this->cacheManager->cacheRepositoryData($repoId, 'branches', fn() => ['main', 'develop']);
-        $this->cacheManager->cacheRepositoryData($repoId, 'commits', fn() => ['commit1', 'commit2']);
+        $this->cacheManager->cacheRepositoryData($repoId, 'branches', fn () => ['main', 'develop']);
+        $this->cacheManager->cacheRepositoryData($repoId, 'commits', fn () => ['commit1', 'commit2']);
 
         // Verify data is cached
         $this->assertNotNull($this->cacheManager->get(sprintf('repo_%s_branches', $repoId)));

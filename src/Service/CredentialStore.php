@@ -12,13 +12,13 @@ if (! defined('ABSPATH')) {
  */
 class CredentialStore
 {
-    private const OPTION_KEY        = 'git_manager_repo_credentials';
+    private const OPTION_KEY = 'git_manager_repo_credentials';
 
     private const ENCRYPTION_METHOD = 'AES-256-CBC';
 
-    private const KEY_LENGTH        = 32;
+    private const KEY_LENGTH = 32;
 
-    private const IV_LENGTH         = 16;
+    private const IV_LENGTH = 16;
 
     /**
      * Generate encryption key from WordPress salts
@@ -34,7 +34,7 @@ class CredentialStore
      */
     private static function encrypt(string $data): string
     {
-        if ($data === '' || $data === '0') {
+        if ('' === $data || '0' === $data) {
             return '';
         }
 
@@ -54,7 +54,7 @@ class CredentialStore
      */
     private static function decrypt(string $encryptedData): string
     {
-        if ($encryptedData === '' || $encryptedData === '0') {
+        if ('' === $encryptedData || '0' === $encryptedData) {
             return '';
         }
 

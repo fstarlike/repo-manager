@@ -56,11 +56,11 @@ class SecureGitRunner
     /**
      * Rate limiting storage
      */
-    private const RATE_LIMIT_OPTION       = 'git_manager_rate_limits';
+    private const RATE_LIMIT_OPTION = 'git_manager_rate_limits';
 
-    private const RATE_LIMIT_WINDOW       = 60;
+    private const RATE_LIMIT_WINDOW = 60;
 
-     // 1 minute
+    // 1 minute
     private const RATE_LIMIT_MAX_REQUESTS = 10; // Max 10 requests per minute per user
 
     /**
@@ -82,7 +82,7 @@ class SecureGitRunner
 
         foreach ($args as $arg) {
             $arg = trim($arg);
-            if ($arg === '' || $arg === '0') {
+            if ('' === $arg || '0' === $arg) {
                 continue;
             }
 
@@ -133,7 +133,7 @@ class SecureGitRunner
 
         // Clean old entries
         if (isset($limits[$userId])) {
-            $limits[$userId] = array_filter($limits[$userId], fn($timestamp) => $timestamp > $windowStart);
+            $limits[$userId] = array_filter($limits[$userId], fn ($timestamp) => $timestamp > $windowStart);
         } else {
             $limits[$userId] = [];
         }
@@ -230,7 +230,7 @@ class SecureGitRunner
 
             // Build command
             $fullCommand = 'git -C ' . escapeshellarg($repoPath) . ' ' . $command;
-            if ($sanitizedArgs !== []) {
+            if ([] !== $sanitizedArgs) {
                 $fullCommand .= ' ' . implode(' ', array_map('escapeshellarg', $sanitizedArgs));
             }
 
@@ -576,7 +576,7 @@ class SecureGitRunner
         $windowStart = $currentTime - self::RATE_LIMIT_WINDOW;
 
         $userRequests   = $limits[$userId] ?? [];
-        $recentRequests = array_filter($userRequests, fn($timestamp) => $timestamp > $windowStart);
+        $recentRequests = array_filter($userRequests, fn ($timestamp) => $timestamp > $windowStart);
 
         return [
             'current_requests'   => count($recentRequests),

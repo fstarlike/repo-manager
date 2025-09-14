@@ -13,13 +13,13 @@ class CacheManager
 {
     private const CACHE_OPTION_PREFIX = 'git_manager_cache_';
 
-    private const CACHE_META_OPTION   = 'git_manager_cache_meta';
+    private const CACHE_META_OPTION = 'git_manager_cache_meta';
 
     private static ?self $instance = null;
 
-    private array $memoryCache     = [];
+    private array $memoryCache = [];
 
-    private array $cacheStats      = [
+    private array $cacheStats = [
         'hits'    => 0,
         'misses'  => 0,
         'sets'    => 0,
@@ -255,7 +255,7 @@ class CacheManager
         }
 
         // Sort by creation time (oldest first)
-        uasort($meta, fn($a, $b) => $a['created'] - $b['created']);
+        uasort($meta, fn ($a, $b) => $a['created'] - $b['created']);
 
         $removed         = 0;
         $entriesToRemove = count($meta) - $maxEntries;

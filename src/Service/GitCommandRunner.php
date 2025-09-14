@@ -249,7 +249,7 @@ class GitCommandRunner
 
         // Return structured result
         return [
-            'output'    => ($output !== '' ? $output : $error),
+            'output'    => ('' !== $output ? $output : $error),
             'exit_code' => $exitCode,
         ];
     }

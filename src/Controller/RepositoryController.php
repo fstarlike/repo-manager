@@ -452,7 +452,7 @@ class RepositoryController
     private function cloneRepository(string $url, string $path, string $branch = ''): array
     {
         $clone = SecureGitRunner::cloneRepository($url, $path);
-        if ($branch !== '' && $branch !== '0' && ($clone['success'] ?? false)) {
+        if ('' !== $branch && '0' !== $branch && ($clone['success'] ?? false)) {
             $checkout = SecureGitRunner::runInDirectory($path, 'checkout ' . escapeshellarg($branch));
             if (!$checkout['success']) {
                 return [

@@ -163,8 +163,6 @@ class GitManager
 
     /**
      * Check if a repository is new (has no commits)
-     *
-     *
      */
     public static function isNewRepository(string $repoPath): bool
     {
@@ -1741,7 +1739,7 @@ class GitManager
         $gravatarUrl = '';
         $hasAvatar   = false;
 
-        if ($email !== '' && $email !== '0') {
+        if ('' !== $email && '0' !== $email) {
             $hash        = md5(strtolower(trim($email)));
             $gravatarUrl = sprintf('https://www.gravatar.com/avatar/%s?d=identicon&s=40', $hash);
 
