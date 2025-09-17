@@ -753,7 +753,7 @@
 
 /* Dark Theme */
 
-[data-theme="dark"] {
+html[data-theme="dark"] {
     --gm-bg: var(--gm-gray-900);
     --gm-bg-secondary: var(--gm-gray-800);
     --gm-bg-tertiary: var(--gm-gray-700);
@@ -838,7 +838,7 @@
     background: rgba(255, 255, 255, 0.95);
 }
 
-[data-theme="dark"] .repo-manager-header {
+html[data-theme="dark"] .repo-manager-header {
     background: rgba(15, 23, 42, 0.95);
 }
 
@@ -992,6 +992,12 @@
 }
 
 /* Dashboard Layout */
+
+.wp-admin .wrap {
+    background: var(--gm-bg);
+    color: var(--gm-text);
+    min-height: 100vh;
+}
 
 .repo-manager-dashboard {
     display: grid;
@@ -1400,7 +1406,7 @@
 
 /* Dark theme support for badges */
 
-[data-theme="dark"] .repo-type-badge {
+html[data-theme="dark"] .repo-type-badge {
     &.plugin {
         background: rgba(16, 185, 129, 0.15);
         border-color: rgba(16, 185, 129, 0.3);
@@ -1432,7 +1438,7 @@
 
 /* Dark theme support for hashtag */
 
-[data-theme="dark"] .repo-hashtag {
+html[data-theme="dark"] .repo-hashtag {
     opacity: 0.9;
 }
 
@@ -1490,7 +1496,7 @@
 
 /* Dark theme support for commit count badges */
 
-[data-theme="dark"] {
+html[data-theme="dark"] {
     .commit-count-badge {
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
     }
@@ -2205,6 +2211,7 @@
 .git-notification {
     position: relative;
     background: var(--gm-bg-elevated);
+    color: var(--gm-text);
     border-radius: 8px;
     box-shadow: 0 12px 24px rgba(0, 0, 0, 0.18), var(--gm-shadow-xl);
     padding: var(--gm-space-4);
@@ -3860,7 +3867,7 @@ body {
 
 /* Dark Theme Adjustments */
 
-[data-theme="dark"] {
+html[data-theme="dark"] {
     .git-commit-item.latest {
         background: linear-gradient(
             135deg,
@@ -4097,7 +4104,7 @@ body {
 
 /* Dark theme support for troubleshooting */
 
-[data-theme="dark"] {
+html[data-theme="dark"] {
     .maintenance-buttons .git-action-btn {
         background: var(--gm-gray-800);
         border-color: var(--gm-gray-600);
@@ -4524,7 +4531,7 @@ div#changes-list {
     }
 }
 
-[data-theme="dark"] .repo-recommendations .change-row {
+html[data-theme="dark"] .repo-recommendations .change-row {
     background: #17171a;
     border-color: #2b2b2f;
 }
@@ -4566,7 +4573,7 @@ div#changes-list {
 
 /* Dark theme adjustments */
 
-[data-theme="dark"] .repo-recommendations {
+html[data-theme="dark"] .repo-recommendations {
     .overview-card {
         background: linear-gradient(
                 150deg,
@@ -4667,7 +4674,7 @@ div#changes-list {
 
 /* Branch name pill override */
 
-[data-theme="dark"] .repo-recommendations .branch-name {
+html[data-theme="dark"] .repo-recommendations .branch-name {
     background: linear-gradient(135deg, #312e81, #4338ca);
     color: #e0e7ff;
 }
@@ -4737,7 +4744,7 @@ div#repo-status-body {
 
 /* Dark mode refinements */
 
-[data-theme="dark"] .repo-recommendations {
+html[data-theme="dark"] .repo-recommendations {
     .repo-status-indicator {
         background: linear-gradient(135deg, #3f3f46, #27272a);
         border-color: #52525b;
@@ -5130,7 +5137,7 @@ input#new-search-enhanced {
 
 /* Compact primary button for recommendations */
 
-[data-theme="dark"] .recommendation-item {
+html[data-theme="dark"] .recommendation-item {
     background: #121214;
     border-color: #2b2b2f;
 }
@@ -5190,7 +5197,7 @@ input#new-search-enhanced {
 
 /* Dark Theme Support */
 
-[data-theme="dark"] {
+html[data-theme="dark"] {
     .repo-status-card,
     .repo-branch-card,
     .repo-changes-card,
@@ -5456,7 +5463,7 @@ input#new-search-enhanced {
     }
 }
 
-[data-theme="dark"] .git-commit-item {
+html[data-theme="dark"] .git-commit-item {
     background: #0f1724;
     border-color: #1f2937;
 }
@@ -5662,7 +5669,7 @@ input#new-search-enhanced {
     overflow: hidden;
 }
 
-[data-theme="dark"] .skeleton {
+html[data-theme="dark"] .skeleton {
     background: linear-gradient(
         90deg,
         var(--gm-gray-700) 25%,
@@ -6976,7 +6983,7 @@ input#new-search-enhanced {
 
 /* Dark theme support for settings */
 
-[data-theme="dark"] .settings-form {
+html[data-theme="dark"] .settings-form {
     .form-section {
         background: var(--gm-gray-800);
         border-color: var(--gm-gray-700);
@@ -7208,7 +7215,7 @@ input#new-search-enhanced {
 
 /* Dark theme support for missing folder cards */
 
-[data-theme="dark"] {
+html[data-theme="dark"] {
     .git-repo-card-missing {
         background: rgba(239, 68, 68, 0.05);
         border-color: rgba(239, 68, 68, 0.2);
@@ -7399,7 +7406,7 @@ input#new-search-enhanced {
 
 /* Dark theme support for auto-fill indicators */
 
-[data-theme="dark"] {
+html[data-theme="dark"] {
     .form-control.auto-filled {
         background-color: rgba(16, 185, 129, 0.1);
         border-color: var(--gm-success);
@@ -7843,7 +7850,7 @@ input#new-search-enhanced {
 }
 
 /* Dark Theme Support */
-[data-theme="dark"] {
+html[data-theme="dark"] {
     .form-section-title {
         color: var(--gm-gray-100);
         border-bottom-color: var(--gm-gray-700);
@@ -9268,8 +9275,11 @@ span#repo-name {
     }
 }
 
+.git-settings-header-content div.fs-notice.promotion,
+.git-settings-header-content div.fs-notice.success,
+.git-settings-header-content div.fs-notice.updated,
 .repo-manager-header div.fs-notice.promotion,
-.repo-manager-headerdiv.fs-notice.success,
+.repo-manager-header div.fs-notice.success,
 .repo-manager-header div.fs-notice.updated,
 .notice {
     display: none !important;

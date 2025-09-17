@@ -11,6 +11,7 @@ use WPGitManager\Service\RepositoryManager;
 use WPGitManager\Service\SecureGitRunner;
 use WPGitManager\View\Admin\Dashboard;
 use WPGitManager\View\Components\Settings;
+use WPGitManager\View\Admin\Status;
 
 if (! defined('ABSPATH')) {
     exit;
@@ -48,6 +49,10 @@ class GitManager
     {
         // Git operations are now handled by GitController
         // This method is kept for future use if needed
+
+        // SSH and Git installation handlers
+        add_action('wp_ajax_git_manager_test_ssh', [$this, 'testSSHConnection']);
+        add_action('wp_ajax_git_manager_install_git_ssh', [$this, 'installGitViaSSH']);
     }
 
     public function add_admin_menu()
@@ -68,6 +73,14 @@ class GitManager
             'manage_options',
             'repo-manager-settings',
             [$this, 'settings_page']
+        );
+        add_submenu_page(
+            'repo-manager',
+            __('System Status', 'repo-manager'),
+            __('Status', 'repo-manager'),
+            'manage_options',
+            'repo-manager-status',
+            [$this, 'status_page']
         );
     }
 
@@ -119,13 +132,7 @@ class GitManager
      */
     public static function is_auto_fix_enabled()
     {
-        $setting_enabled = get_option('git_manager_allow_auto_fix', 0);
-
-        if ($setting_enabled) {
-            return defined('GIT_MANAGER_ALLOW_AUTO_FIX') && GIT_MANAGER_ALLOW_AUTO_FIX;
-        }
-
-        return false;
+        return (bool) get_option('git_manager_allow_auto_fix', 0);
     }
 
     /**
@@ -182,6 +189,16 @@ class GitManager
 
         $settings = new Settings();
         $settings->render();
+    }
+
+    public function status_page()
+    {
+        if (! current_user_can('manage_options')) {
+            wp_die(esc_html__('Access denied.', 'repo-manager'));
+        }
+
+        $status = new Status();
+        $status->render();
     }
 
     public function enqueue_assets($hook)
@@ -256,6 +273,8 @@ class GitManager
                     'git_manager_safe_directory'     => wp_create_nonce('git_manager_action'),
                     'git_manager_troubleshoot'       => wp_create_nonce('git_manager_action'),
                     'git_manager_repo_reclone'       => wp_create_nonce('git_manager_action'),
+                    'git_manager_test_ssh'           => wp_create_nonce('git_manager_action'),
+                    'git_manager_install_git_ssh'    => wp_create_nonce('git_manager_action'),
                 ],
                 'translations' => [
                     'commandExecutionDisabled'           => __('Command execution is disabled.', 'repo-manager'),
@@ -441,8 +460,20 @@ class GitManager
                     'yourRepositoryIsClean'              => __('Your repository is clean and up to date with the remote.', 'repo-manager'),
                     'repositoryIsBehindRemote'           => __('Repository is behind remote by {count} commit(s).', 'repo-manager'),
                     'repositoryIsAheadOfRemote'          => __('Repository is ahead of remote by {count} commit(s).', 'repo-manager'),
-                    'addRepositoryTooltip'               => __('Add Repository (Ctrl+N)', 'repo-manager'),
-                    'toggleThemeTooltip'                 => __('Toggle Theme (Ctrl+T)', 'repo-manager'),
+                'addRepositoryTooltip'               => __('Add Repository (Ctrl+N)', 'repo-manager'),
+                'toggleThemeTooltip'                 => __('Toggle Theme (Ctrl+T)', 'repo-manager'),
+                'sshConnectionTest'                  => __('Test SSH Connection', 'repo-manager'),
+                'installGitViaSSH'                   => __('Install Git via SSH', 'repo-manager'),
+                'sshHost'                            => __('SSH Host', 'repo-manager'),
+                'sshUsername'                        => __('SSH Username', 'repo-manager'),
+                'sshPassword'                        => __('SSH Password', 'repo-manager'),
+                'sshKeyPath'                         => __('SSH Key Path', 'repo-manager'),
+                'testingSSHConnection'               => __('Testing SSH connection...', 'repo-manager'),
+                'installingGit'                      => __('Installing Git via SSH...', 'repo-manager'),
+                'sshConnectionSuccess'               => __('SSH connection successful', 'repo-manager'),
+                'sshConnectionFailed'                => __('SSH connection failed', 'repo-manager'),
+                'gitInstallationSuccess'             => __('Git installed successfully', 'repo-manager'),
+                'gitInstallationFailed'              => __('Git installation failed', 'repo-manager'),
                 ],
             ]);
             wp_localize_script('repo-manager-global', 'gitManagerNonce', ['nonce' => wp_create_nonce('git_manager_action')]);
@@ -459,7 +490,7 @@ class GitManager
             ]);
         }
 
-        if ('toplevel_page_repo-manager' !== $hook && 'repo-manager_page_repo-manager-troubleshooting' !== $hook && 'repo-manager_page_repo-manager-settings' !== $hook) {
+        if ('toplevel_page_repo-manager' !== $hook && 'repo-manager_page_repo-manager-troubleshooting' !== $hook && 'repo-manager_page_repo-manager-settings' !== $hook && 'repo-manager_page_repo-manager-status' !== $hook) {
             return;
         }
 
@@ -1754,5 +1785,95 @@ class GitManager
             'gravatar_url' => $gravatarUrl,
             'has_avatar'   => $hasAvatar,
         ];
+    }
+
+    /**
+     * Test SSH connection
+     */
+    public function testSSHConnection(): void
+    {
+        check_ajax_referer('git_manager_action', 'nonce');
+        $this->ensureCapabilities();
+
+        try {
+            $host     = sanitize_text_field(wp_unslash($_POST['host'] ?? ''));
+            $port     = sanitize_text_field(wp_unslash($_POST['port'] ?? ''));
+            $username = sanitize_text_field(wp_unslash($_POST['username'] ?? ''));
+            $password = sanitize_text_field(wp_unslash($_POST['password'] ?? ''));
+            $keyContent = '';
+
+            if (isset($_FILES['ssh_key_file']) && UPLOAD_ERR_OK === $_FILES['ssh_key_file']['error']) {
+                $keyContent = file_get_contents($_FILES['ssh_key_file']['tmp_name']);
+                if (false === $keyContent) {
+                    throw new \Exception('Failed to read SSH key file.');
+                }
+            }
+
+            if (empty($host) || empty($username)) {
+                throw new \Exception('Host and username are required');
+            }
+
+            $result = \WPGitManager\Service\SystemStatus::testSSHConnection($host, $username, $password, $keyContent, $port);
+
+            if ($result['success']) {
+                wp_send_json_success($result);
+            } else {
+                $details = isset($result['exit']) || isset($result['cmd']) || isset($result['raw'])
+                    ? sprintf('%s | exit:%s | cmd:%s | out:%s',
+                        $result['message'] ?? 'SSH failed',
+                        isset($result['exit']) ? (string) $result['exit'] : '-',
+                        isset($result['cmd']) ? (string) $result['cmd'] : '-',
+                        isset($result['raw']) ? substr((string) $result['raw'], 0, 300) : '-')
+                    : ($result['message'] ?? 'SSH failed');
+                wp_send_json_error($details);
+            }
+        } catch (\Exception $exception) {
+            wp_send_json_error($exception->getMessage());
+        }
+    }
+
+    /**
+     * Install Git via SSH
+     */
+    public function installGitViaSSH(): void
+    {
+        check_ajax_referer('git_manager_action', 'nonce');
+        $this->ensureCapabilities();
+
+        try {
+            $host     = sanitize_text_field(wp_unslash($_POST['host'] ?? ''));
+            $port     = sanitize_text_field(wp_unslash($_POST['port'] ?? ''));
+            $username = sanitize_text_field(wp_unslash($_POST['username'] ?? ''));
+            $password = sanitize_text_field(wp_unslash($_POST['password'] ?? ''));
+            $keyContent = '';
+
+            if (isset($_FILES['ssh_key_file']) && UPLOAD_ERR_OK === $_FILES['ssh_key_file']['error']) {
+                $keyContent = file_get_contents($_FILES['ssh_key_file']['tmp_name']);
+                if (false === $keyContent) {
+                    throw new \Exception('Failed to read SSH key file.');
+                }
+            }
+
+            if (empty($host) || empty($username)) {
+                throw new \Exception('Host and username are required');
+            }
+
+            $result = \WPGitManager\Service\SystemStatus::installGitViaSSH($host, $username, $password, $keyContent, $port);
+
+            if ($result['success']) {
+                wp_send_json_success($result);
+            } else {
+                $details = isset($result['exit']) || isset($result['cmd']) || isset($result['raw'])
+                    ? sprintf('%s | exit:%s | cmd:%s | out:%s',
+                        $result['message'] ?? 'SSH failed',
+                        isset($result['exit']) ? (string) $result['exit'] : '-',
+                        isset($result['cmd']) ? (string) $result['cmd'] : '-',
+                        isset($result['raw']) ? substr((string) $result['raw'], 0, 300) : '-')
+                    : ($result['message'] ?? 'SSH failed');
+                wp_send_json_error($details);
+            }
+        } catch (\Exception $exception) {
+            wp_send_json_error($exception->getMessage());
+        }
     }
 }

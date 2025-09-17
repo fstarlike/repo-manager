@@ -400,7 +400,7 @@ class SecureGitRunner
                 return ['success' => false, 'output' => 'Directory must be within WordPress content directory', 'cmd' => $gitArgs];
             }
 
-            $fullCommand = self::buildEnvPrefix($opts) . 'git -C ' . escapeshellarg($realDir) . ' ' . $gitArgs . ' 2>&1';
+            $fullCommand = self::buildEnvPrefix($opts) . 'git -C ' . escapeshellarg($realDir) . ' ' . $gitArgs;
             $result      = self::executeCommand($fullCommand);
 
             return [
@@ -425,7 +425,7 @@ class SecureGitRunner
                 return ['success' => false, 'output' => 'Command execution is disabled', 'cmd' => $gitArgs];
             }
 
-            $fullCommand = self::buildEnvPrefix($opts) . 'git ' . $gitArgs . ' 2>&1';
+            $fullCommand = self::buildEnvPrefix($opts) . 'git ' . $gitArgs;
             $result      = self::executeCommand($fullCommand);
 
             return [
@@ -437,6 +437,62 @@ class SecureGitRunner
             ];
         } catch (\Exception $exception) {
             return ['success' => false, 'output' => 'Command execution failed: ' . $exception->getMessage(), 'cmd' => $gitArgs];
+        }
+    }
+
+    /**
+     * Execute a system-level ssh command.
+     */
+    public static function runSshCommand(string $sshArgs, array $opts = []): array
+    {
+        try {
+            if (!GitManager::are_commands_enabled()) {
+                return ['success' => false, 'output' => 'Command execution is disabled', 'cmd' => $sshArgs];
+            }
+
+            $fullCommand = self::buildEnvPrefix($opts) . $sshArgs;
+            $result      = self::executeCommand($fullCommand);
+
+            return [
+                'success'        => (0 === $result['exit_code']),
+                'output'         => $result['output'],
+                'cmd'            => $sshArgs,
+                'execution_time' => $result['execution_time'],
+                'exit_code'      => $result['exit_code'],
+            ];
+        } catch (\Exception $exception) {
+            return ['success' => false, 'output' => 'Command execution failed: ' . $exception->getMessage(), 'cmd' => $sshArgs];
+        }
+    }
+
+    /**
+     * Find a system executable using 'which' or 'where'.
+     */
+    public static function findExecutable(string $executable): array
+    {
+        try {
+            if (!GitManager::are_commands_enabled()) {
+                return ['success' => false, 'output' => 'Command execution is disabled'];
+            }
+
+            // Sanitize executable name to prevent command injection
+            if (!preg_match('/^[a-zA-Z0-9_-]+$/', $executable)) {
+                return ['success' => false, 'output' => 'Invalid executable name provided'];
+            }
+
+            $isWin   = ('WIN' === strtoupper(substr(PHP_OS, 0, 3)));
+            $command = $isWin ? 'where ' . $executable : 'which ' . $executable;
+
+            $result = self::executeCommand($command);
+
+            return [
+                'success'   => (0 === $result['exit_code']),
+                'output'    => $result['output'],
+                'cmd'       => $command,
+                'exit_code' => $result['exit_code'],
+            ];
+        } catch (\Exception $exception) {
+            return ['success' => false, 'output' => 'Command execution failed: ' . $exception->getMessage()];
         }
     }
 
@@ -465,7 +521,7 @@ class SecureGitRunner
             }
 
             $envPrefix = self::buildEnvPrefix($opts);
-            $cmd       = $envPrefix . 'git clone ' . escapeshellarg($remoteUrl) . ' ' . escapeshellarg($targetDirectory) . ' 2>&1';
+            $cmd       = $envPrefix . 'git clone ' . escapeshellarg($remoteUrl) . ' ' . escapeshellarg($targetDirectory);
             $result    = self::executeCommand($cmd);
 
             $repoPath  = rtrim($targetDirectory, '\\/');
@@ -539,9 +595,8 @@ class SecureGitRunner
      */
     private static function buildEnvPrefix(array $opts): string
     {
-        $home      = getenv('HOME') ?: (getenv('USERPROFILE') ?: sys_get_temp_dir());
-        $homeClean = str_replace('"', '', $home);
         $prefix    = '';
+        $isWin     = ('WIN' === strtoupper(substr(PHP_OS, 0, 3)));
 
         // SSH key wrapper support
         if (!empty($opts['ssh_key'])) {
@@ -555,33 +610,142 @@ class SecureGitRunner
             $keyPath = $tmpDir . '/key_' . md5($keyContent) . '.pem';
             if (!file_exists($keyPath)) {
                 file_put_contents($keyPath, $keyContent);
+                @chmod($keyPath, 0600);
             }
 
-            $isWin   = ('WIN' === strtoupper(substr(PHP_OS, 0, 3)));
             $wrapper = $tmpDir . '/ssh_wrapper_' . md5($keyPath) . ($isWin ? '.bat' : '.sh');
 
             if ($isWin) {
                 if (!file_exists($wrapper)) {
-                    file_put_contents($wrapper, "@echo off\nssh -i \"{$keyPath}\" -o StrictHostKeyChecking=no %*\n");
+                    file_put_contents($wrapper, "@echo off\nssh -i \"{$keyPath}\" -o StrictHostKeyChecking=no -o UserKnownHostsFile=nul %*\n");
                 }
-
                 $prefix .= 'set "GIT_SSH=' . $wrapper . '" && ';
             } else {
                 if (!file_exists($wrapper)) {
-                    file_put_contents($wrapper, "#!/bin/sh\nexec ssh -i '" . $keyPath . "' -o StrictHostKeyChecking=no \"$@\"\n");
+                    file_put_contents($wrapper, "#!/bin/sh\nexec ssh -i '" . $keyPath . "' -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \"$@\"\n");
+                    @chmod($wrapper, 0755);
                 }
-
                 $prefix .= 'GIT_SSH=' . escapeshellarg($wrapper) . ' ';
             }
         }
 
-        if ('WIN' === strtoupper(substr(PHP_OS, 0, 3))) {
-            $prefix = 'set "HOME=' . $homeClean . '" && ' . $prefix;
-        } else {
-            $prefix = 'HOME=' . escapeshellarg($home) . ' ' . $prefix;
+        // Ensure HOME is set for Git. When missing, try to find a real user home, otherwise use a safe fallback.
+        $existingHome = getenv('HOME');
+        if (empty($existingHome) || '0' === (string) $existingHome) {
+            $homeToSet = '';
+
+            // 1. Try to find a plausible existing home directory with a .gitconfig file
+            $candidateHomes = self::candidateUserHomes();
+            foreach ($candidateHomes as $candidate) {
+                if (is_file($candidate . DIRECTORY_SEPARATOR . '.gitconfig')) {
+                    $homeToSet = $candidate;
+                    break;
+                }
+            }
+
+            // 2. If no existing .gitconfig is found, use a safe fallback directory
+            if ('' === $homeToSet) {
+                $uploads      = function_exists('wp_upload_dir') ? wp_upload_dir(null, false) : null;
+                $baseDir      = is_array($uploads) && !empty($uploads['basedir']) ? rtrim($uploads['basedir'], '\/') : WP_CONTENT_DIR;
+                $fallbackHome = $baseDir . '/repo-manager-home';
+                if (!is_dir($fallbackHome)) {
+                    if (function_exists('wp_mkdir_p')) {
+                        @wp_mkdir_p($fallbackHome);
+                    } else {
+                        @mkdir($fallbackHome, 0755, true);
+                    }
+                }
+                $homeToSet = $fallbackHome;
+            }
+
+            if ($isWin) {
+                $homeClean = str_replace('"', '', $homeToSet);
+                $prefix = 'set "HOME=' . $homeClean . '" && ' . $prefix;
+            } else {
+                $prefix = 'HOME=' . escapeshellarg($homeToSet) . ' ' . $prefix;
+            }
         }
 
         return $prefix;
+    }
+
+    /**
+     * Candidate user home directories to probe for .gitconfig (Windows and Unix-like).
+     */
+    private static function candidateUserHomes(): array
+    {
+        $homes = [];
+        // Standard environment variables
+        $envHome = getenv('HOME');
+        if (!empty($envHome) && '0' !== $envHome) {
+            $homes[] = $envHome;
+        }
+        $userProfile = getenv('USERPROFILE');
+        if (!empty($userProfile) && '0' !== $userProfile) {
+            $homes[] = $userProfile;
+        }
+        // Windows specific composition
+        $homeDrive  = getenv('HOMEDRIVE');
+        $homePath   = getenv('HOMEPATH');
+        if ($homeDrive && $homePath) {
+            $homes[] = rtrim($homeDrive, '\\/') . rtrim($homePath, '\\/');
+        }
+        // De-duplicate and filter empty values
+        return array_values(array_unique(array_filter($homes)));
+    }
+
+    /**
+     * Fix repository file permissions for common issues.
+     */
+    public static function fixRepositoryPermissions(string $repoPath): array
+    {
+        try {
+            if (!GitManager::are_commands_enabled()) {
+                return ['success' => false, 'output' => 'Command execution is disabled'];
+            }
+
+            $realPath = self::validateRepoPath($repoPath); // This will validate it's a git repo inside wp-content
+
+            // Using find is safer than wildcards and handles subdirectory permissions correctly
+            $commands = [
+                'chmod -R 755 ' . escapeshellarg($realPath),
+                'find ' . escapeshellarg($realPath . '/.git/objects') . ' -type f -exec chmod 644 {} +',
+                'find ' . escapeshellarg($realPath . '/.git/hooks') . ' -type f -exec chmod 755 {} +',
+            ];
+
+            // These files must exist and need specific permissions
+            $filesToChmod = [
+                $realPath . '/.git/config' => '644',
+                $realPath . '/.git/HEAD'   => '644',
+            ];
+
+            foreach ($filesToChmod as $file => $mode) {
+                if (file_exists($file)) {
+                    $commands[] = 'chmod ' . escapeshellarg($mode) . ' ' . escapeshellarg($file);
+                }
+            }
+
+            $results        = [];
+            $overallSuccess = true;
+
+            foreach ($commands as $cmd) {
+                $result    = self::executeCommand($cmd);
+                $isSuccess = ($result['exit_code'] === 0);
+                $results[] = [
+                    'command' => $cmd,
+                    'success' => $isSuccess,
+                    'output'  => $result['output'],
+                ];
+                if (!$isSuccess) {
+                    $overallSuccess = false;
+                }
+            }
+
+            return ['success' => $overallSuccess, 'details' => $results];
+
+        } catch (\Exception $e) {
+            return ['success' => false, 'output' => 'Permission fix failed: ' . $e->getMessage()];
+        }
     }
 
     /**

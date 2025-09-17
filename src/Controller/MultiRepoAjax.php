@@ -2081,7 +2081,7 @@ class MultiRepoAjax
 
         // Get local branches
         $localResult = GitCommandRunner::run($repo->path, 'branch');
-        if ($localResult['success']) {
+        if (!empty(trim((string) ($localResult['output'] ?? '')))) {
             $localLines = explode("\n", trim($localResult['output']));
             foreach ($localLines as $line) {
                 if ('' !== $line && '0' !== $line) {
@@ -2093,7 +2093,7 @@ class MultiRepoAjax
 
         // Get remote branches
         $remoteResult = GitCommandRunner::run($repo->path, 'branch -r');
-        if ($remoteResult['success']) {
+        if (!empty(trim((string) ($remoteResult['output'] ?? '')))) {
             $remoteLines = explode("\n", trim($remoteResult['output']));
             foreach ($remoteLines as $line) {
                 $line = trim($line);
@@ -2496,34 +2496,18 @@ class MultiRepoAjax
             ]);
         }
 
-        // Fix common permission issues
-        $commands = [
-            'chmod -R 755 ' . escapeshellarg($repo->path),
-            'chmod -R 644 ' . escapeshellarg($repo->path . '/.git/objects/*'),
-            'chmod 755 ' . escapeshellarg($repo->path . '/.git/hooks/*'),
-            'chmod 644 ' . escapeshellarg($repo->path . '/.git/config'),
-            'chmod 644 ' . escapeshellarg($repo->path . '/.git/HEAD'),
-        ];
+        $result = SecureGitRunner::fixRepositoryPermissions($repo->path);
 
-        // Remove automatic permission changes for safety
-        $results = array_map(fn ($cmd) => [
-            'command' => $cmd,
-            'result'  => 'skipped (unsafe) — run manually if you understand the risk',
-        ], $commands);
-
-        // Test if git commands work now
-        $testResult = GitCommandRunner::run($repo->path, 'status');
-
-        if ($testResult['success']) {
+        if ($result['success']) {
             wp_send_json_success([
                 'message' => 'Permissions fixed successfully',
-                'details' => $results,
+                'details' => $result['details'],
             ]);
         } else {
             wp_send_json_error([
-                'message'     => 'Permission fix attempted but git commands still failing',
-                'details'     => $results,
-                'test_result' => $testResult,
+                'message'     => 'Permission fix failed. See details for more information.',
+                'details'     => $result['details'] ?? [],
+                'raw_output'  => $result['output'] ?? 'No output.',
             ]);
         }
     }

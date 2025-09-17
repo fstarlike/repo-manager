@@ -36,7 +36,6 @@ class RepositoryController
         add_action('wp_ajax_git_manager_repo_list', [$this, 'list']);
         add_action('wp_ajax_git_manager_get_repos', [$this, 'list']);
         add_action('wp_ajax_git_manager_repo_add', [$this, 'add']);
-        add_action('wp_ajax_git_manager_add_repository', [$this, 'add']);
         add_action('wp_ajax_git_manager_repo_update', [$this, 'update']);
         add_action('wp_ajax_git_manager_repo_delete', [$this, 'delete']);
         add_action('wp_ajax_git_manager_delete_repo', [$this, 'delete']);

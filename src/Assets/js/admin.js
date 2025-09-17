@@ -25,7 +25,19 @@ function getTranslation(key, fallback = "") {
 
 class GitManager {
     constructor() {
+        // Debounce utility
+        this.debounce = (func, delay) => {
+            let timeout;
+            return function (...args) {
+                const context = this;
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(context, args), delay);
+            };
+        };
+
+        this.repositories = [];
         this.currentRepo = null;
+        this.activeTab = "overview";
         this.detailsRequestSeq = 0;
         this.detailsAbortController = null;
         this._repoListPoller = null;
@@ -2211,12 +2223,6 @@ class GitManager {
             repoList.innerHTML = `
                 <div class="git-repo-empty">
                     <p>No repositories found</p>
-                    <button class="git-action-btn git-clone-btn">
-                        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
-                            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
-                        </svg>
-                        Add Your First Repository
-                    </button>
                 </div>
             `;
 
@@ -4259,7 +4265,25 @@ class GitManager {
                         "Repository deleted successfully",
                         "success"
                     );
-                    this.loadRepositories();
+
+                    // After deleting, load repositories and then check if the active one still exists.
+                    this.loadRepositories().then(() => {
+                        const activeRepoId = this.getActiveRepoId();
+                        const stillExists = this.repositories.some(
+                            (repo) => repo.id === activeRepoId
+                        );
+
+                        if (!stillExists) {
+                            // Hide details, show welcome screen
+                            this.showWelcomeScreen();
+
+                            // Optional: set a new active repository (e.g., the first one)
+                            if (this.repositories.length > 0) {
+                                this.setActiveRepoId(this.repositories[0].id);
+                                this.showRepoDetails(this.repositories[0].id);
+                            }
+                        }
+                    });
                 } else {
                     throw new Error(
                         result.data || "Failed to delete repository"
@@ -5929,6 +5953,11 @@ class GitManager {
      * Setup event listeners for settings form
      */
     setupSettingsFormListeners() {
+        // Debounced version of the function to mark settings as modified
+        const debouncedMarkModified = this.debounce(() => {
+            this.markSettingsAsModified();
+        }, 500);
+
         // Save settings button
         const saveButton = document.getElementById("save-settings-btn");
         if (saveButton) {
@@ -5944,10 +5973,11 @@ class GitManager {
         );
         inputs.forEach((input) => {
             input.addEventListener("input", () => {
-                // Add visual indicator that changes are pending
-                this.markSettingsAsModified();
+                // Use the debounced function
+                debouncedMarkModified();
 
-                // Special handling for path input
+                // Special handling for path input can remain immediate if needed,
+                // or can also be debounced. For now, we'll keep it as is.
                 if (input.id === "repo-path-setting") {
                     this.validatePathInput(input);
                 }
