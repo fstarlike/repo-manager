@@ -6,9 +6,10 @@ use WPGitManager\Admin\GitManager;
 use WPGitManager\Model\Repository;
 use WPGitManager\Service\AuditLogger;
 use WPGitManager\Service\CredentialStore;
-use WPGitManager\Service\SecureGitRunner;
+use WPGitManager\Service\GitCommandRunner;
 use WPGitManager\Service\RateLimiter;
 use WPGitManager\Service\RepositoryManager;
+use WPGitManager\Service\SecureGitRunner;
 use WPGitManager\Service\SystemStatus;
 
 if (! defined('ABSPATH')) {
@@ -2049,92 +2050,44 @@ class MultiRepoAjax
 
     public function ajax_get_branches(): void
     {
-        // Try multiple nonce verification methods like latestCommit
-        if (! current_user_can('manage_options')) {
-            wp_send_json_error('Access denied');
-        }
-
-        $nonce                 = sanitize_text_field(wp_unslash($_POST['nonce'] ?? ''));
-        $action_specific_valid = wp_verify_nonce($nonce, 'git_manager_action');
-        $general_nonce_valid   = wp_verify_nonce($nonce, 'git_manager_action');
-
-        if (! $action_specific_valid && ! $general_nonce_valid) {
-            wp_send_json_error('Invalid nonce');
-        }
-
-        $repoId = $this->getRepositoryId();
-
-        if ('' === $repoId || '0' === $repoId) {
-            wp_send_json_error('No repository specified');
-        }
-
-        $repo = RepositoryManager::instance()->get($repoId);
-        if (!$repo instanceof Repository) {
+        $this->ensureAllowed();
+        $id   = $this->getRepositoryId();
+        $repo = RepositoryManager::instance()->get($id);
+        if (!$repo) {
             wp_send_json_error('Repository not found');
         }
 
-        // --- Improved Branch Deduplication ---
-        $branches = [];
-
-        // Get local branches
-        $localResult = SecureGitRunner::run($repo->path, 'branch');
-        if (!empty(trim((string) ($localResult['output'] ?? '')))) {
-            $localLines = explode("\n", trim($localResult['output']));
-            foreach ($localLines as $line) {
-                if ('' !== $line && '0' !== $line) {
-                    $branchName            = ltrim($line, '* ');
-                    $branches[$branchName] = true;
-                }
-            }
+        $localResult = GitCommandRunner::run($repo->path, 'branch');
+        if (!$localResult['success']) {
+            wp_send_json_error('Failed to get local branches');
         }
 
-        // Get remote branches
-        $remoteResult = SecureGitRunner::run($repo->path, 'branch', ['-r']);
-        if (!empty(trim((string) ($remoteResult['output'] ?? '')))) {
-            $remoteLines = explode("\n", trim($remoteResult['output']));
-            foreach ($remoteLines as $line) {
-                $line = trim($line);
-                if ($line && false === strpos($line, '->')) {
-                    $branchName            = preg_replace('/^origin\//', '', $line);
-                    $branches[$branchName] = true;
-                }
-            }
+        $remoteResult = GitCommandRunner::run($repo->path, 'branch -r');
+        if (!$remoteResult['success']) {
+            wp_send_json_error('Failed to get remote branches');
         }
 
-        if ([] === $branches && ! $localResult['success']) {
-            wp_send_json_error('Failed to get branches: ' . ($localResult['output'] ?? 'Unknown Git error'));
-        }
-
-        $branches = array_keys($branches);
-
-        $activeBranchResult = SecureGitRunner::run($repo->path, 'rev-parse', ['--abbrev-ref', 'HEAD']);
+        $activeBranchResult = GitCommandRunner::run($repo->path, 'rev-parse --abbrev-ref HEAD');
         $activeBranch       = $activeBranchResult['success'] ? trim($activeBranchResult['output']) : '';
 
-        // Custom sort branches
-        usort($branches, function ($a, $b) use ($activeBranch) {
-            $a_clean = trim(str_replace('* ', '', $a));
-            $b_clean = trim(str_replace('* ', '', $b));
+        $localBranches = array_values(array_filter(array_map(function ($b) {
+            return trim(str_replace('* ', '', $b));
+        }, explode("\n", trim($localResult['output'])))));
 
-            if ($a_clean === $activeBranch) {
-                return -1;
+        $remoteBranches = array_values(array_filter(array_map(function ($b) {
+            $b = trim($b);
+            if (strpos($b, '->') === false) {
+                return str_replace('origin/', '', $b);
             }
+            return null;
+        }, explode("\n", trim($remoteResult['output'])))));
 
-            if ($b_clean === $activeBranch) {
-                return 1;
-            }
-
-            if (in_array($a_clean, ['main', 'master'])) {
-                return -1;
-            }
-
-            if (in_array($b_clean, ['main', 'master'])) {
-                return 1;
-            }
-
-            return strcasecmp($a_clean, $b_clean);
-        });
-
-        wp_send_json_success(['branches' => array_values($branches), 'activeBranch' => $activeBranch]);
+        wp_send_json_success([
+            'branches'        => array_values(array_unique(array_merge($localBranches, $remoteBranches))),
+            'active_branch'   => $activeBranch,
+            'local_branches'  => $localBranches,
+            'remote_branches' => $remoteBranches,
+        ]);
     }
 
     public function ajax_checkout_branch(): void
@@ -2584,7 +2537,7 @@ class MultiRepoAjax
             ]);
         }
 
-        $result = SecureGitRunner::run($repo->path, 'config', ['--local', '--add', 'safe.directory', $repo->path]);
+        $result = GitCommandRunner::run($repo->path, 'config --local --add safe.directory ' . escapeshellarg($repo->path));
         if ($result['success']) {
             wp_send_json_success(['message' => 'Safe directory configured']);
         } else {
