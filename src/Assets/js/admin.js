@@ -1877,8 +1877,8 @@ class GitManager {
             const ajaxData = {
                 action: "git_manager_add_repository",
                 nonce: gitManagerAjax.nonce,
-                repo_url: repoUrl,
-                repo_path: data.repo_path,
+                remoteUrl: repoUrl,
+                path: data.repo_path,
                 repo_branch: data.repo_branch || "",
                 existing_repo: data.existing_repo === "on" ? "1" : "0",
             };
@@ -3952,6 +3952,13 @@ class GitManager {
                                       branchName
                                   )}">Checkout</button>`
                         }
+                        ${
+                            !isCurrent
+                                ? `<button class="git-action-btn delete-branch-btn" data-branch="${this.escapeHtml(
+                                      branchName
+                                  )}"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="action-icon-svg"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>`
+                                : ""
+                        }
                     </div>
                 </div>
             `;
@@ -3959,20 +3966,23 @@ class GitManager {
                 .join("");
             branchesList.innerHTML = branchesHTML;
 
-            // Add event listeners after rendering
             branchesList.querySelectorAll(".checkout-btn").forEach((button) => {
                 button.addEventListener("click", (e) => {
                     const branchName = e.target.dataset.branch;
                     this.checkoutBranch(this.currentRepo, branchName);
                 });
             });
+
+            branchesList
+                .querySelectorAll(".delete-branch-btn")
+                .forEach((button) => {
+                    button.addEventListener("click", (e) => {
+                        const branchName =
+                            e.target.closest("[data-branch]").dataset.branch;
+                        this.deleteBranch(this.currentRepo, branchName);
+                    });
+                });
         };
-
-        render();
-
-        searchInput.addEventListener("input", (e) => {
-            render(e.target.value);
-        });
     }
 
     /**
@@ -3981,49 +3991,71 @@ class GitManager {
     async checkoutBranch(repoId, branchName) {
         this.showProgress(`Checking out ${branchName}...`);
         try {
-            const formData = new FormData();
-            formData.append("action", gitManagerAjax.actions.checkout_branch);
-            formData.append("nonce", gitManagerAjax.nonce);
-            formData.append("id", repoId);
-            formData.append("branch", branchName);
-
-            const response = await fetch(gitManagerAjax.ajaxurl, {
-                method: "POST",
-                body: formData,
+            const result = await this.apiCall("git_manager_repo_checkout", {
+                id: repoId,
+                branch: branchName,
             });
-
-            const result = await response.json();
 
             if (result.success) {
                 this.showNotification(
                     `Successfully checked out to ${branchName}`,
                     "success"
                 );
-                // Refresh repositories and then restore selection
-                await this.loadRepositories();
-                // Re-select the current repository after refresh
-                this.selectRepository(repoId);
-                this.switchTab("overview");
+                this.refreshRepoDetails(repoId); // Refresh details to show new branch
             } else {
                 throw new Error(
                     result.data || `Failed to checkout ${branchName}`
                 );
             }
         } catch (error) {
-            this.showNotification(error.message, "error");
+            this.showNotification(
+                `Error checking out branch: ${error.message}`,
+                "error"
+            );
         } finally {
             this.hideProgress();
         }
     }
 
-    /**
-     * Action Handlers
-     */
-    handleAction(action, element) {
-        const repoId =
-            element.closest(".git-repo-card")?.dataset.repoId ||
-            this.currentRepo;
+    async deleteBranch(repoId, branchName) {
+        if (
+            !confirm(
+                `Are you sure you want to delete the branch "${branchName}"? This action cannot be undone.`
+            )
+        ) {
+            return;
+        }
 
+        this.showProgress(`Deleting branch ${branchName}...`);
+        try {
+            const result = await this.apiCall(
+                "git_manager_repo_delete_branch",
+                {
+                    id: repoId,
+                    branch: branchName,
+                }
+            );
+
+            if (result.success) {
+                this.showNotification(
+                    `Branch "${branchName}" deleted successfully`,
+                    "success"
+                );
+                this.loadBranches(repoId); // Refresh the branch list
+            } else {
+                throw new Error(result.data || "Failed to delete branch");
+            }
+        } catch (error) {
+            this.showNotification(
+                `Error deleting branch: ${error.message}`,
+                "error"
+            );
+        } finally {
+            this.hideProgress();
+        }
+    }
+
+    handleRepoAction(action, repoId) {
         switch (action) {
             case "pull":
                 this.pullRepository(repoId);
@@ -4239,54 +4271,36 @@ class GitManager {
                 "Are you sure you want to delete this repository? This action cannot be undone."
             )
         ) {
+            const deleteFiles = confirm(
+                "Do you also want to delete the repository files from the disk? This action is also permanent."
+            );
+
             this.showNotification(
                 WPGitManagerGlobal.translations.deletingRepository,
                 "info"
             );
             try {
-                const formData = new FormData();
-                formData.append("action", gitManagerAjax.actions.repo_delete);
-                formData.append("id", repoId);
-                formData.append("nonce", gitManagerAjax.nonce);
-
-                const response = await fetch(gitManagerAjax.ajaxurl, {
-                    method: "POST",
-                    body: formData,
+                const result = await this.apiCall("git_manager_repo_delete", {
+                    id: repoId,
+                    delete_files: deleteFiles,
                 });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const result = await response.json();
 
                 if (result.success) {
                     this.showNotification(
                         "Repository deleted successfully",
                         "success"
                     );
-
-                    // After deleting, load repositories and then check if the active one still exists.
-                    this.loadRepositories().then(() => {
-                        const activeRepoId = this.getActiveRepoId();
-                        const stillExists = this.repositories.some(
-                            (repo) => repo.id === activeRepoId
-                        );
-
-                        if (!stillExists) {
-                            // Hide details, show welcome screen
-                            this.showWelcomeScreen();
-
-                            // Optional: set a new active repository (e.g., the first one)
-                            if (this.repositories.length > 0) {
-                                this.setActiveRepoId(this.repositories[0].id);
-                                this.showRepoDetails(this.repositories[0].id);
-                            }
-                        }
-                    });
+                    this.refreshRepositoryList();
+                    const repoDetail = document.getElementById("repo-detail");
+                    if (repoDetail) {
+                        repoDetail.innerHTML =
+                            this.getWelcomeScreenHTML() ||
+                            "<p>Repository deleted. Select another repository.</p>";
+                    }
                 } else {
-                    throw new Error(
-                        result.data || "Failed to delete repository"
+                    this.showNotification(
+                        result.data || "Failed to delete repository",
+                        "error"
                     );
                 }
             } catch (error) {
@@ -5903,9 +5917,12 @@ class GitManager {
      */
     async loadRepositorySettings() {
         try {
-            const response = await this.apiCall("git_manager_repo_details", {
-                id: this.currentRepo,
-            });
+            const response = await this.apiCall(
+                "git_manager_get_repo_details",
+                {
+                    id: this.currentRepo,
+                }
+            );
 
             if (response.success) {
                 const repo = response.data;
@@ -6438,9 +6455,12 @@ class GitManager {
     async manageRepositoryPath(repoId) {
         try {
             // Get repository details first
-            const response = await this.apiCall("git_manager_repo_details", {
-                id: repoId,
-            });
+            const response = await this.apiCall(
+                "git_manager_get_repo_details",
+                {
+                    id: repoId,
+                }
+            );
 
             if (!response.success) {
                 this.showNotification(
@@ -6752,7 +6772,6 @@ class GitManager {
                     path: newPath,
                     remoteUrl: repo.remoteUrl,
                     authType: repo.authType,
-                    meta: repo.meta,
                 });
 
                 if (response.success) {
@@ -6779,14 +6798,18 @@ class GitManager {
                 }
             } else if (actionType === "reclone") {
                 // Re-clone repository
-                const addResponse = await this.apiCall("git_manager_repo_add", {
-                    name: repo.name,
-                    repo_path: newPath,
-                    repo_url: repo.remoteUrl,
-                    repo_branch: branch,
-                    authType: repo.authType,
-                    existing_repo: false,
-                });
+                const addResponse = await this.apiCall(
+                    "git_manager_add_repository",
+                    {
+                        name: repo.name,
+                        path: newPath,
+                        remoteUrl: repo.remoteUrl,
+                        repo_branch: branch,
+                        authType: repo.authType,
+                        username: repo.username,
+                        existing_repo: false,
+                    }
+                );
 
                 if (addResponse.success) {
                     const newRepoId = addResponse.data.id;
@@ -6955,6 +6978,38 @@ class GitManager {
                     3000
                 );
             }
+        }
+    }
+
+    async renameRepository(repoId, newName) {
+        if (!repoId) return;
+
+        this.showProgress("Renaming repository...");
+        try {
+            const response = await this.apiCall("git_manager_repo_rename", {
+                id: repoId,
+                name: newName,
+            });
+
+            if (response.success) {
+                this.showNotification(
+                    "Repository renamed successfully",
+                    "success"
+                );
+                this.loadRepositories();
+            } else {
+                this.showNotification(
+                    "Failed to rename repository: " + response.data,
+                    "error"
+                );
+            }
+        } catch (error) {
+            this.showNotification(
+                "Error renaming repository: " + error.message,
+                "error"
+            );
+        } finally {
+            this.hideProgress();
         }
     }
 }
@@ -7476,66 +7531,5 @@ class GitManagerSkeleton {
         element.className = `skeleton ${className}`;
         element.style.width = width;
         element.style.height = height;
-        return element;
-    }
-
-    /**
-     * Check if required elements exist before showing skeletons
-     */
-    checkRequiredElements() {
-        // Only require elements relevant to currently used skeletons; avoid hard failing on optional sections
-        const requiredElements = [
-            ".git-repo-list",
-            ".commits-list",
-            ".branches-list",
-            ".git-repo-details",
-            "#changes-list",
-        ];
-
-        const missingElements = [];
-        requiredElements.forEach((selector) => {
-            const element = document.querySelector(selector);
-            if (!element) {
-                missingElements.push(selector);
-            }
-        });
-
-        if (missingElements.length > 0) {
-            return false;
-        }
-
-        return true;
-    }
-
-    /**
-     * Safe method to show skeleton with element existence check
-     */
-    safeShowSkeleton(container, type, count = 1) {
-        if (!container) {
-            return false;
-        }
-
-        if (!this.checkRequiredElements()) {
-            return false;
-        }
-
-        this.showSkeleton(container, type, count);
-        return true;
     }
 }
-
-// Initialize skeleton utility
-const gitManagerSkeleton = new GitManagerSkeleton();
-
-// Note: Removed global error handler to allow WordPress to handle errors properly
-// Skeletons will be hidden through normal page lifecycle events
-
-// Hide skeletons when page is unloaded
-window.addEventListener("beforeunload", () => {
-    gitManagerSkeleton.hideAllSkeletons();
-});
-
-// Hide skeletons on DOM content loaded to ensure clean state
-document.addEventListener("DOMContentLoaded", () => {
-    gitManagerSkeleton.hideAllSkeletons();
-});

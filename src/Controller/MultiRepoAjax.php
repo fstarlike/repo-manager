@@ -24,22 +24,20 @@ class MultiRepoAjax
     private RateLimiter $rateLimiter;
     private AuditLogger $auditLogger;
     private CredentialStore $credentialStore;
+    private SystemStatus $systemStatus;
 
-    public function __construct(RateLimiter $rateLimiter, AuditLogger $auditLogger, CredentialStore $credentialStore)
+    public function __construct(RateLimiter $rateLimiter, AuditLogger $auditLogger, CredentialStore $credentialStore, SystemStatus $systemStatus)
     {
         $this->rateLimiter       = $rateLimiter;
         $this->auditLogger       = $auditLogger;
         $this->credentialStore   = $credentialStore;
+        $this->systemStatus      = $systemStatus;
         add_action('wp_ajax_git_manager_repo_list', [$this, 'list']);
-        add_action('wp_ajax_git_manager_get_repos', [$this, 'list']);
         add_action('wp_ajax_git_manager_add_repository', [$this, 'add']);
         add_action('wp_ajax_git_manager_repo_update', [$this, 'update']);
         add_action('wp_ajax_git_manager_repo_delete', [$this, 'delete']);
-        add_action('wp_ajax_git_manager_delete_repo', [$this, 'delete']);
         add_action('wp_ajax_git_manager_repo_clone', [$this, 'clone']);
-        add_action('wp_ajax_git_manager_clone_repo', [$this, 'clone']);
         add_action('wp_ajax_git_manager_repo_git', [$this, 'gitOp']);
-        add_action('wp_ajax_git_manager_repo_credentials', [$this, 'saveCredentials']);
         add_action('wp_ajax_git_manager_repo_dirs', [$this, 'listDirectories']);
         add_action('wp_ajax_git_manager_dir_create', [$this, 'createDirectory']);
         add_action('wp_ajax_git_manager_dir_delete', [$this, 'deleteDirectory']);
@@ -49,25 +47,21 @@ class MultiRepoAjax
         add_action('wp_ajax_git_manager_repo_merge', [$this, 'merge']);
         add_action('wp_ajax_git_manager_repo_tag', [$this, 'createTag']);
         add_action('wp_ajax_git_manager_repo_log', [$this, 'detailedLog']);
-        add_action('wp_ajax_git_manager_detailed_log', [$this, 'detailedLog']);
         add_action('wp_ajax_git_manager_repo_set_active', [$this, 'setActive']);
         add_action('wp_ajax_git_manager_add_existing_repo', [$this, 'addExisting']);
         add_action('wp_ajax_git_manager_get_repo_details', [$this, 'getDetails']);
         add_action('wp_ajax_git_manager_repo_status', [$this, 'getStatus']);
-
         add_action('wp_ajax_git_manager_repo_create_branch', [$this, 'createBranch']);
         add_action('wp_ajax_git_manager_repo_delete_branch', [$this, 'deleteBranch']);
         add_action('wp_ajax_git_manager_repo_stash', [$this, 'stash']);
         add_action('wp_ajax_git_manager_repo_stash_pop', [$this, 'stashPop']);
         add_action('wp_ajax_git_manager_repo_troubleshoot', [$this, 'troubleshootRepo']);
-
         add_action('wp_ajax_git_manager_latest_commit', [$this, 'latestCommit']);
         add_action('wp_ajax_git_manager_fetch', [$this, 'fetch']);
         add_action('wp_ajax_git_manager_pull', [$this, 'pull']);
         add_action('wp_ajax_git_manager_get_branches', [$this, 'ajax_get_branches']);
         add_action('wp_ajax_git_manager_log', [$this, 'log']);
         add_action('wp_ajax_git_manager_branch', [$this, 'branch']);
-        add_action('wp_ajax_git_manager_checkout', [$this, 'checkout']);
         add_action('wp_ajax_git_manager_check_git_changes', [$this, 'checkGitChanges']);
         add_action('wp_ajax_git_manager_fix_permission', [$this, 'fixPermission']);
         add_action('wp_ajax_git_manager_fix_ssh', [$this, 'fixSsh']);
@@ -139,102 +133,13 @@ class MultiRepoAjax
 
     public function list(): void
     {
-        // Try multiple nonce verification methods like latestCommit
+        check_ajax_referer('git_manager_action', 'nonce');
+
         if (! current_user_can('manage_options')) {
             wp_send_json_error('Access denied');
         }
 
-        $nonce                 = sanitize_text_field(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')));
-        $action_specific_valid = wp_verify_nonce($nonce, 'git_manager_action');
-        $general_nonce_valid   = wp_verify_nonce($nonce, 'git_manager_action');
-
-        if (! $action_specific_valid && ! $general_nonce_valid) {
-            wp_send_json_error('Invalid nonce');
-        }
-
-        // Cache-first for fast navigation
-        $cachedRepos = get_transient('git_manager_cache_repo_list');
-        if (false !== $cachedRepos) {
-            wp_send_json_success($cachedRepos);
-        }
-
-        $active = RepositoryManager::instance()->getActiveId();
-        $repos  = [];
-        foreach (RepositoryManager::instance()->all() as $r) {
-            $arr           = $r->toArray();
-            $arr['active'] = ($r->id === $active);
-
-            // Check if repository folder exists
-            $arr['folderExists'] = is_dir($r->path);
-
-            // Determine repository type based on path
-            $arr['repoType'] = $this->determineRepositoryType($r->path);
-
-            // best-effort branch detection
-            if ($arr['folderExists'] && is_dir($r->path . '/.git')) {
-                $b         = GitCommandRunner::run($r->path, 'rev-parse --abbrev-ref HEAD');
-                $rawBranch = trim($b['output'] ?? '');
-                if ('' !== $rawBranch && $b['success']) {
-                    // Use only first line in case of stray warnings
-                    $arr['activeBranch'] = strtok($rawBranch, "\r\n");
-                } else {
-                    // Fallback: try to get branch from status
-                    $statusResult = GitCommandRunner::run($r->path, 'status --porcelain --branch');
-                    if ($statusResult['success']) {
-                        $lines = explode("\n", trim($statusResult['output'] ?? ''));
-                        foreach ($lines as $line) {
-                            if (0 === strpos($line, '##') && preg_match('/## ([^\.]+)/', $line, $matches)) {
-                                $arr['activeBranch'] = $matches[1];
-                                break;
-                            }
-                        }
-                    }
-
-                    // If still no branch, set default
-                    if (empty($arr['activeBranch'])) {
-                        $arr['activeBranch'] = 'main';
-                    }
-                }
-
-                // Get repository status for changes detection
-                $status            = GitCommandRunner::run($r->path, 'status --porcelain');
-                $arr['hasChanges'] = !in_array(trim($status['output'] ?? ''), ['', '0'], true);
-
-                // Get branch status (ahead/behind)
-                $branchStatus = GitCommandRunner::run($r->path, 'status --porcelain --branch');
-                $ahead        = 0;
-                $behind       = 0;
-                if ($branchStatus['success']) {
-                    $lines = explode("\n", trim($branchStatus['output'] ?? ''));
-                    foreach ($lines as $line) {
-                        if (0 === strpos($line, '##')) {
-                            if (preg_match('/ahead (\d+)/', $line, $matches)) {
-                                $ahead = (int) $matches[1];
-                            }
-
-                            if (preg_match('/behind (\d+)/', $line, $matches)) {
-                                $behind = (int) $matches[1];
-                            }
-
-                            break;
-                        }
-                    }
-                }
-
-                $arr['ahead']  = $ahead;
-                $arr['behind'] = $behind;
-            } else {
-                $arr['hasChanges']   = false;
-                $arr['activeBranch'] = $arr['folderExists'] ? 'Unknown' : 'Folder Missing';
-                $arr['ahead']        = 0;
-                $arr['behind']       = 0;
-            }
-
-            $repos[] = $arr;
-        }
-
-        // Cache the list briefly for snappy navigation
-        set_transient('git_manager_cache_repo_list', $repos, 20);
+        $repos = RepositoryManager::getRepositories(true);
         wp_send_json_success($repos);
     }
 
@@ -242,10 +147,7 @@ class MultiRepoAjax
     {
         $this->ensureAllowed();
 
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $id = $this->getRepositoryId();
 
@@ -433,10 +335,7 @@ class MultiRepoAjax
     {
         $this->ensureAllowed();
 
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $id   = $this->getRepositoryId();
         $repo = RepositoryManager::instance()->get($id);
@@ -512,17 +411,12 @@ class MultiRepoAjax
 
     public function add(): void
     {
-        $this->ensureAllowed();
-
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $data = [
             'name'      => sanitize_text_field(wp_unslash($_POST['name'] ?? '')),
-            'path'      => sanitize_text_field(wp_unslash($_POST['repo_path'] ?? $_POST['path'] ?? '')),
-            'remoteUrl' => sanitize_text_field(wp_unslash($_POST['repo_url'] ?? $_POST['remoteUrl'] ?? '')),
+            'path'      => sanitize_text_field(wp_unslash($_POST['path'] ?? '')),
+            'remoteUrl' => sanitize_text_field(wp_unslash($_POST['remoteUrl'] ?? '')),
             'authType'  => sanitize_text_field(wp_unslash($_POST['authType'] ?? 'ssh')),
         ];
         if (! $data['path']) {
@@ -766,12 +660,7 @@ class MultiRepoAjax
 
     public function update(): void
     {
-        $this->ensureAllowed();
-
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $id = $this->getRepositoryId();
 
@@ -781,92 +670,39 @@ class MultiRepoAjax
             wp_send_json_error('Repository not found');
         }
 
-        $metaRaw = sanitize_text_field(wp_unslash($_POST['meta'] ?? null));
-        $meta    = null;
-        if (null !== $metaRaw) {
-            if (is_string($metaRaw)) {
-                $decoded = json_decode(stripslashes($metaRaw), true);
-                if (is_array($decoded)) {
-                    $meta = $decoded;
-                }
-            } elseif (is_array($metaRaw)) {
-                $meta = $metaRaw;
-            }
+        // Get new data from POST
+        $name       = sanitize_text_field(wp_unslash($_POST['name'] ?? ''));
+        $remoteUrl  = sanitize_text_field(wp_unslash($_POST['remoteUrl'] ?? ''));
+        $authType   = sanitize_text_field(wp_unslash($_POST['authType'] ?? ''));
+        $username   = sanitize_text_field(wp_unslash($_POST['username'] ?? ''));
+        $token      = sanitize_text_field(wp_unslash($_POST['token'] ?? ''));
+        $privateKey = empty($_POST['private_key']) ? '' : sanitize_textarea_field(wp_unslash($_POST['private_key']));
+        $autoDeploy = wp_validate_boolean(wp_unslash($_POST['autoDeploy'] ?? false));
+        $webhook    = sanitize_text_field(wp_unslash($_POST['webhook'] ?? ''));
+
+        // Update repository details
+        $repo = RepositoryManager::update($id, $name, $remoteUrl, $autoDeploy, $webhook);
+        if (! $repo instanceof Repository) {
+            wp_send_json_error('Failed to update repository.');
         }
 
-        $newPath = sanitize_text_field(wp_unslash($_POST['path'] ?? ''));
-        $newName = sanitize_text_field(wp_unslash($_POST['name'] ?? ''));
-
-        // Validate the new path if it's being changed
-        if (! empty($newPath) && $newPath !== $currentRepo->path) {
-
-            // Check if the new path is valid
-            if (! RepositoryManager::instance()->validatePath($newPath)) {
-
-                wp_send_json_error('Invalid repository path: ' . $newPath);
-            }
-
-            // Check if the new path already exists and is different from current
-            $existingRepo = null;
-            foreach (RepositoryManager::instance()->all() as $repo) {
-                if ($repo->path === $newPath && $repo->id !== $id) {
-                    $existingRepo = $repo;
-                    break;
-                }
-            }
-
-            if ($existingRepo) {
-                wp_send_json_error('A repository with this path already exists: ' . $existingRepo->name);
-            }
-        }
-
-        // Handle path resolution
-        $resolvedPath = $newPath;
-        if (! empty($newPath)) {
-            $realPath = realpath($newPath);
-            if ($realPath) {
-                $resolvedPath = $realPath;
-            } else {
-                // Try with ABSPATH prefix if it's a relative path
-                $absPath = realpath(ABSPATH . '/' . ltrim($newPath, '/'));
-                if ($absPath) {
-                    $resolvedPath = $absPath;
-                }
-            }
-        }
-
-        $payload = [
-            'name'      => $newName,
-            'path'      => $resolvedPath,
-            'remoteUrl' => sanitize_text_field(wp_unslash($_POST['remoteUrl'] ?? '')),
+        // Update credentials
+        $cred = [
+            'authType' => $authType,
+            'username' => $username,
+            'token'    => $token,
         ];
-
-        // Only include authType if it's provided
-        if (isset($_POST['authType'])) {
-            $payload['authType'] = sanitize_text_field(wp_unslash($_POST['authType']));
+        if ($privateKey) {
+            $cred['private_key'] = $privateKey;
         }
-
-        // Only include meta if it's provided
-        if (null !== $meta) {
-            $payload['meta'] = $meta;
-        }
-
-        $repo = RepositoryManager::instance()->update($id, $payload);
-        if (!$repo instanceof Repository) {
-            wp_send_json_error('Failed to update repository');
-        }
+        CredentialStore::set($repo->id, $cred);
 
         wp_send_json_success($repo->toArray());
     }
 
     public function delete(): void
     {
-        $this->ensureAllowed();
-
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $id = $this->getRepositoryId();
 
@@ -940,12 +776,7 @@ class MultiRepoAjax
 
     public function clone(): void
     {
-        $this->ensureAllowed();
-
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $remote     = sanitize_text_field(wp_unslash($_POST['remote'] ?? ''));
         $target     = sanitize_text_field(wp_unslash($_POST['target'] ?? ''));
@@ -1087,10 +918,7 @@ class MultiRepoAjax
     {
         $this->ensureAllowed();
 
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $name       = sanitize_text_field(wp_unslash($_POST['name'] ?? ''));
         $path       = sanitize_text_field(wp_unslash($_POST['path'] ?? ''));
@@ -1148,9 +976,7 @@ class MultiRepoAjax
         $this->ensureAllowed();
 
         // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $id   = $this->getRepositoryId();
         $op   = sanitize_text_field(wp_unslash($_POST['op'] ?? 'status'));
@@ -1270,10 +1096,7 @@ class MultiRepoAjax
     {
         $this->ensureAllowed();
 
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $id         = $this->getRepositoryId();
         $branchName = $this->sanitizeRef(sanitize_text_field(wp_unslash($_POST['branch'] ?? '')));
@@ -1292,9 +1115,7 @@ class MultiRepoAjax
         $this->ensureAllowed();
 
         // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $id         = $this->getRepositoryId();
         $branchName = $this->sanitizeRef(sanitize_text_field(wp_unslash($_POST['branch'] ?? '')));
@@ -1318,10 +1139,7 @@ class MultiRepoAjax
     {
         $this->ensureAllowed();
 
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $id     = $this->getRepositoryId();
         $branch = $this->sanitizeRef(sanitize_text_field(wp_unslash($_POST['branch'] ?? '')));
@@ -1351,10 +1169,7 @@ class MultiRepoAjax
     {
         $this->ensureAllowed();
 
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $id     = $this->getRepositoryId();
         $source = $this->sanitizeRef(sanitize_text_field(wp_unslash($_POST['source'] ?? '')));
@@ -1372,10 +1187,7 @@ class MultiRepoAjax
     {
         $this->ensureAllowed();
 
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $id      = $this->getRepositoryId();
         $tag     = $this->sanitizeRef(sanitize_text_field(wp_unslash($_POST['tag'] ?? '')));
@@ -1399,10 +1211,7 @@ class MultiRepoAjax
     {
         $this->ensureAllowed();
 
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $id      = $this->getRepositoryId();
         $message = sanitize_text_field(wp_unslash($_POST['message'] ?? ''));
@@ -1425,10 +1234,7 @@ class MultiRepoAjax
     {
         $this->ensureAllowed();
 
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $id   = $this->getRepositoryId();
         $repo = RepositoryManager::instance()->get($id);
@@ -1448,10 +1254,7 @@ class MultiRepoAjax
     {
         $this->ensureAllowed();
 
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $repoId = $this->getRepositoryId();
 
@@ -1526,52 +1329,18 @@ class MultiRepoAjax
     {
         $this->ensureAllowed();
 
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $id = $this->getRepositoryId();
         $ok = RepositoryManager::instance()->setActive($id);
         $ok ? wp_send_json_success(true) : wp_send_json_error('Repository not found');
     }
 
-    public function saveCredentials(): void
-    {
-        $this->ensureAllowed();
-
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
-
-        $id = $this->getRepositoryId();
-        if (!RepositoryManager::instance()->get($id) instanceof Repository) {
-            wp_send_json_error('Repository not found');
-        }
-
-        $cred = [
-            'authType' => sanitize_text_field(wp_unslash($_POST['authType'] ?? 'ssh')),
-            'username' => sanitize_text_field(wp_unslash($_POST['username'] ?? '')),
-            'token'    => sanitize_text_field(wp_unslash($_POST['token'] ?? '')),
-        ];
-
-        if (! empty($_POST['private_key'])) {
-            $cred['private_key'] = sanitize_textarea_field(wp_unslash($_POST['private_key']));
-        }
-
-        CredentialStore::set($id, $cred);
-        wp_send_json_success(['saved' => true]);
-    }
-
     public function troubleshootRepo(): void
     {
         $this->ensureAllowed();
 
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $id   = $this->getRepositoryId();
         $repo = RepositoryManager::instance()->get($id);
@@ -1617,10 +1386,7 @@ class MultiRepoAjax
     {
         $this->ensureAllowed();
 
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $relative = sanitize_text_field(wp_unslash($_POST['relative'] ?? ''));
         $query    = sanitize_text_field(wp_unslash($_POST['query'] ?? ''));
@@ -1713,10 +1479,7 @@ class MultiRepoAjax
     {
         $this->ensureAllowed();
 
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $relative = sanitize_text_field(wp_unslash($_POST['relative'] ?? ''));
         $name     = sanitize_file_name(wp_unslash($_POST['name'] ?? ''));
@@ -1748,10 +1511,7 @@ class MultiRepoAjax
     {
         $this->ensureAllowed();
 
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $relative = sanitize_text_field(wp_unslash($_POST['relative'] ?? ''));
 
@@ -1802,10 +1562,7 @@ class MultiRepoAjax
     {
         $this->ensureAllowed();
 
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $relative = sanitize_text_field(wp_unslash($_POST['relative'] ?? ''));
         $newName  = sanitize_file_name(wp_unslash($_POST['new_name'] ?? ''));
@@ -1861,21 +1618,12 @@ class MultiRepoAjax
     // Admin bar compatibility methods
     public function latestCommit(): void
     {
-
         // Check permissions first
         if (! current_user_can('manage_options')) {
             wp_send_json_error('Access denied');
         }
 
-        // Try multiple nonce verification methods
-        $nonce = sanitize_text_field(wp_unslash($_POST['nonce'] ?? ''));
-        // Accept both action-specific and general nonces for compatibility
-        $action_specific_valid = wp_verify_nonce($nonce, 'git_manager_pull');
-        $general_nonce_valid   = wp_verify_nonce($nonce, 'git_manager_action');
-
-        if (! $action_specific_valid && ! $general_nonce_valid) {
-            wp_send_json_error('Invalid nonce');
-        }
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $repoId = $this->getRepositoryId();
 
@@ -1967,13 +1715,7 @@ class MultiRepoAjax
             wp_send_json_error('Access denied');
         }
 
-        $nonce                 = sanitize_text_field(wp_unslash($_POST['nonce'] ?? ''));
-        $action_specific_valid = wp_verify_nonce($nonce, 'git_manager_action');
-        $general_nonce_valid   = wp_verify_nonce($nonce, 'git_manager_action');
-
-        if (! $action_specific_valid && ! $general_nonce_valid) {
-            wp_send_json_error('Invalid nonce');
-        }
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $repoId = $this->getRepositoryId();
         if ('' === $repoId || '0' === $repoId) {
@@ -2012,13 +1754,7 @@ class MultiRepoAjax
             wp_send_json_error('Access denied');
         }
 
-        $nonce                 = sanitize_text_field(wp_unslash($_POST['nonce'] ?? ''));
-        $action_specific_valid = wp_verify_nonce($nonce, 'git_manager_action');
-        $general_nonce_valid   = wp_verify_nonce($nonce, 'git_manager_action');
-
-        if (! $action_specific_valid && ! $general_nonce_valid) {
-            wp_send_json_error('Invalid nonce');
-        }
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $repoId = $this->getRepositoryId();
         if ('' === $repoId || '0' === $repoId) {
@@ -2053,6 +1789,7 @@ class MultiRepoAjax
     public function ajax_get_branches(): void
     {
         $this->ensureAllowed();
+        check_ajax_referer('git_manager_action', 'nonce');
         $id   = $this->getRepositoryId();
         $repo = RepositoryManager::instance()->get($id);
         if (!$repo) {
@@ -2096,10 +1833,7 @@ class MultiRepoAjax
     {
         $this->ensureAllowed();
 
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $id     = $this->getRepositoryId();
         $branch = $this->sanitizeRef(sanitize_text_field(wp_unslash($_POST['branch'] ?? '')));
@@ -2142,14 +1876,9 @@ class MultiRepoAjax
     public function log(): void
     {
         $this->ensureAllowed();
-
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
-
-        $repoId = $this->getRepositoryId();
-        $repo   = RepositoryManager::instance()->get($repoId);
+        check_ajax_referer('git_manager_action', 'nonce');
+        $id   = $this->getRepositoryId();
+        $repo = RepositoryManager::instance()->get($id);
 
         if (!$repo instanceof Repository) {
             wp_send_json_error('Repository not found');
@@ -2160,7 +1889,7 @@ class MultiRepoAjax
         $limit = min(max(1, $limit), 50); // Cap at 50 for security
 
         // Check cache first - cache for 2 minutes to balance freshness vs performance
-        $cacheKey = 'git_manager_commits_' . $repoId . '_' . $limit;
+        $cacheKey = 'git_manager_commits_' . $id . '_' . $limit;
         $cached   = get_transient($cacheKey);
         if (false !== $cached) {
             wp_send_json_success($cached);
@@ -2191,7 +1920,7 @@ class MultiRepoAjax
 
         // Cache the results for 2 minutes and store key in registry to allow invalidation without direct SQL
         set_transient($cacheKey, $commits, 120);
-        $registryKey = 'git_manager_commits_registry_' . $repoId;
+        $registryKey = 'git_manager_commits_registry_' . $id;
         $keys        = get_option($registryKey, []);
         if (!is_array($keys)) {
             $keys = [];
@@ -2365,20 +2094,12 @@ class MultiRepoAjax
     public function branch(): void
     {
         $this->ensureAllowed();
+        check_ajax_referer('git_manager_action', 'nonce');
+        $id   = $this->getRepositoryId();
+        $repo = RepositoryManager::instance()->get($id);
 
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
-
-        $activeRepo = RepositoryManager::instance()->getActiveId();
-        if (! $activeRepo) {
-            wp_send_json_error('No active repository');
-        }
-
-        $repo = RepositoryManager::instance()->get($activeRepo);
-        if (!$repo instanceof Repository) {
-            wp_send_json_error('Active repository not found');
+        if (! $repo || ! $repo->path) {
+            wp_send_json_error('Invalid data');
         }
 
         $branch = sanitize_text_field(wp_unslash($_POST['branch'] ?? ''));
@@ -2397,20 +2118,18 @@ class MultiRepoAjax
     public function checkGitChanges(): void
     {
         $this->ensureAllowed();
+        check_ajax_referer('git_manager_action', 'nonce');
 
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
+        // Allow this check to run without a specific repository context
+        $repoId = $this->getRepositoryId();
+
+        if ('' === $repoId || '0' === $repoId) {
+            wp_send_json_error('No repository specified');
         }
 
-        $activeRepo = RepositoryManager::instance()->getActiveId();
-        if (! $activeRepo) {
-            wp_send_json_error('No active repository');
-        }
-
-        $repo = RepositoryManager::instance()->get($activeRepo);
+        $repo = RepositoryManager::instance()->get($repoId);
         if (!$repo instanceof Repository) {
-            wp_send_json_error('Active repository not found');
+            wp_send_json_error('Repository not found');
         }
 
         $result     = GitCommandRunner::run($repo->path, 'status --porcelain');
@@ -2422,19 +2141,15 @@ class MultiRepoAjax
     public function fixPermission(): void
     {
         $this->ensureAllowed();
-
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
-
-        $repoId = $this->getRepositoryId();
+        check_ajax_referer('git_manager_action', 'nonce');
+        $id   = $this->getRepositoryId();
+        $repo = RepositoryManager::instance()->get($id);
 
         if ('' === $repoId || '0' === $repoId) {
             wp_send_json_error('No repository specified');
         }
 
-        $repo = RepositoryManager::instance()->get($repoId);
+        $repo = RepositoryManager::instance()->get($id);
         if (!$repo instanceof Repository) {
             wp_send_json_error('Repository not found');
         }
@@ -2467,14 +2182,15 @@ class MultiRepoAjax
     public function fixSsh(): void
     {
         $this->ensureAllowed();
-
-        $repoId = $this->getRepositoryId();
+        check_ajax_referer('git_manager_action', 'nonce');
+        $id   = $this->getRepositoryId();
+        $repo = RepositoryManager::instance()->get($id);
 
         if ('' === $repoId || '0' === $repoId) {
             wp_send_json_error('No repository specified');
         }
 
-        $repo = RepositoryManager::instance()->get($repoId);
+        $repo = RepositoryManager::instance()->get($id);
         if (!$repo instanceof Repository) {
             wp_send_json_error('Repository not found');
         }
@@ -2508,24 +2224,28 @@ class MultiRepoAjax
     {
         $this->ensureAllowed();
 
-        $allowedRoles = isset($_POST['roles']) && is_array($_POST['roles'])
-            ? array_map('sanitize_text_field', wp_unslash($_POST['roles']))
+        check_ajax_referer('git_manager_action', 'nonce');
+
+        $roles = isset($_POST['roles']) && is_array($_POST['roles'])
+            ? array_map('sanitize_text_field', (array) wp_unslash($_POST['roles']))
             : [];
 
-        update_option('git_manager_allowed_roles', $allowedRoles);
+        update_option('git_manager_allowed_roles', $roles);
         wp_send_json_success(['message' => 'Roles saved successfully']);
     }
 
     public function safeDirectory(): void
     {
         $this->ensureAllowed();
+        check_ajax_referer('git_manager_action', 'nonce');
+        $id   = $this->getRepositoryId();
+        $repo = RepositoryManager::instance()->get($id);
 
-        $repoId = $this->getRepositoryId();
         if ('' === $repoId || '0' === $repoId) {
             wp_send_json_error('No repository specified');
         }
 
-        $repo = RepositoryManager::instance()->get($repoId);
+        $repo = RepositoryManager::instance()->get($id);
         if (!$repo instanceof Repository) {
             wp_send_json_error('Repository not found');
         }
@@ -2550,46 +2270,22 @@ class MultiRepoAjax
     public function troubleshootStep(): void
     {
         $this->ensureAllowed();
+        check_ajax_referer('git_manager_action', 'nonce');
+        $step = sanitize_text_field(wp_unslash($_POST['step'] ?? ''));
+        $id   = $this->getRepositoryId();
 
-        try {
-            $step     = isset($_POST['step']) ? sanitize_text_field(wp_unslash($_POST['step'])) : '';
-            $repoPath = '';
-
-            if (! empty($this->getRepositoryId())) {
-                // Use specific repository
-                $repo = RepositoryManager::instance()->get($this->getRepositoryId());
-                if (!$repo instanceof Repository) {
-                    throw new Exception('Repository not found');
-                }
-
-                $repoPath = $repo->path;
-            } else {
-                // Use active repository
-                $activeRepo = RepositoryManager::instance()->getActiveId();
-                if (! $activeRepo) {
-                    throw new Exception('No active repository found');
-                }
-
-                $repo = RepositoryManager::instance()->get($activeRepo);
-                if (!$repo instanceof Repository) {
-                    throw new Exception('Active repository not found');
-                }
-
-                $repoPath = $repo->path;
-            }
-
-            // Perform step-specific troubleshooting
-            $result = $this->performTroubleshootStep($step, $repoPath);
-            wp_send_json_success($result);
-
-        } catch (Exception $exception) {
-            wp_send_json_error([
-                'status'   => 'error',
-                'message'  => 'Troubleshooting failed: ' . $exception->getMessage(),
-                'solution' => 'Please check the error details and try again',
-                'details'  => $exception->getTraceAsString(),
-            ]);
+        if ('' === $repoId || '0' === $repoId) {
+            wp_send_json_error('No repository specified');
         }
+
+        $repo = RepositoryManager::instance()->get($id);
+        if (!$repo instanceof Repository) {
+            wp_send_json_error('Repository not found');
+        }
+
+        // Perform step-specific troubleshooting
+        $result = $this->performTroubleshootStep($step, $repo->path);
+        wp_send_json_success($result);
     }
 
     private function performTroubleshootStep(string $step, string $repoPath): array
@@ -3249,23 +2945,8 @@ class MultiRepoAjax
     public function troubleshoot(): void
     {
         $this->ensureAllowed();
-
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
-
-        $activeRepo = RepositoryManager::instance()->getActiveId();
-        if (! $activeRepo) {
-            wp_send_json_error('No active repository');
-        }
-
-        $repo = RepositoryManager::instance()->get($activeRepo);
-        if (!$repo instanceof Repository) {
-            wp_send_json_error('Active repository not found');
-        }
-
-        $this->troubleshootRepo();
+        check_ajax_referer('git_manager_action', 'nonce');
+        // No specific repo context needed for this high-level troubleshooter
     }
 
     /**
@@ -3322,6 +3003,8 @@ class MultiRepoAjax
     public function reClone(): void
     {
         $this->ensureAllowed();
+
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $repoId = $this->getRepositoryId();
         if ('' === $repoId || '0' === $repoId) {
@@ -3406,155 +3089,137 @@ class MultiRepoAjax
     {
         $this->ensureAllowed();
 
-        $rateLimiter = RateLimiter::instance();
-        if (!$rateLimiter->checkAjaxRateLimit('git_manager_bulk_repo_status')) { // 10 requests per minute
-            wp_send_json_error('Rate limit exceeded');
+        check_ajax_referer('git_manager_action', 'nonce');
+
+        $repos = RepositoryManager::getRepositories(true);
+        if (empty($repos)) {
+            wp_send_json_error('No repositories found');
         }
 
-        $cache_key   = 'git_manager_bulk_status_cache';
-        $cached_data = get_transient($cache_key);
+        $results = [];
+        foreach ($repos as $repo) {
+            if (!$repo || empty($repo->path)) {
+                continue;
+            }
 
-        if (false !== $cached_data) {
-            wp_send_json_success($cached_data);
-        }
+            // Check if repository directory exists
+            if (!is_dir($repo->path)) {
+                $results[$repo->id] = [
+                    'status'        => null,
+                    'status_error'  => 'Repository directory does not exist: ' . $repo->path,
+                    'latest_commit' => null,
+                    'commit_error'  => 'Repository directory does not exist: ' . $repo->path,
+                    'behind'        => 0,
+                    'ahead'         => 0,
+                    'hasChanges'    => false,
+                    'currentBranch' => null,
+                ];
+                continue;
+            }
 
-        try {
-            $repositories = RepositoryManager::instance()->all();
-            $results      = [];
+            // Check if .git directory exists
+            if (! \WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($repo->path)) {
+                $results[$repo->id] = [
+                    'status'        => null,
+                    'status_error'  => 'Not a valid Git repository: .git directory not found',
+                    'latest_commit' => null,
+                    'commit_error'  => 'Not a valid Git repository: .git directory not found',
+                    'behind'        => 0,
+                    'ahead'         => 0,
+                    'hasChanges'    => false,
+                    'currentBranch' => null,
+                ];
+                continue;
+            }
 
-            foreach ($repositories as $repo) {
-                if (!$repo || empty($repo->path)) {
-                    continue;
-                }
+            // Ensure we have the latest remote state (throttled)
+            $throttleKey = 'git_manager_last_fetch_' . $repo->id;
+            if (false === get_transient($throttleKey)) {
+                SecureGitRunner::runInDirectory($repo->path, 'fetch --all --prune', ['low_priority' => true]);
+                set_transient($throttleKey, time(), 60);
+            }
 
-                // Check if repository directory exists
-                if (!is_dir($repo->path)) {
-                    $results[$repo->id] = [
-                        'status'        => null,
-                        'status_error'  => 'Repository directory does not exist: ' . $repo->path,
-                        'latest_commit' => null,
-                        'commit_error'  => 'Repository directory does not exist: ' . $repo->path,
-                        'behind'        => 0,
-                        'ahead'         => 0,
-                        'hasChanges'    => false,
-                        'currentBranch' => null,
-                    ];
-                    continue;
-                }
+            // Get branch information
+            $branchResult  = SecureGitRunner::runInDirectory($repo->path, 'rev-parse --abbrev-ref HEAD');
+            $currentBranch = trim($branchResult['output'] ?? '');
 
-                // Check if .git directory exists
-                if (! \WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($repo->path)) {
-                    $results[$repo->id] = [
-                        'status'        => null,
-                        'status_error'  => 'Not a valid Git repository: .git directory not found',
-                        'latest_commit' => null,
-                        'commit_error'  => 'Not a valid Git repository: .git directory not found',
-                        'behind'        => 0,
-                        'ahead'         => 0,
-                        'hasChanges'    => false,
-                        'currentBranch' => null,
-                    ];
-                    continue;
-                }
+            if (!$branchResult['success'] || ('' === $currentBranch || '0' === $currentBranch)) {
+                $results[$repo->id] = [
+                    'status'        => null,
+                    'status_error'  => 'Failed to determine current branch',
+                    'latest_commit' => null,
+                    'commit_error'  => 'Failed to determine current branch',
+                    'behind'        => 0,
+                    'ahead'         => 0,
+                    'hasChanges'    => false,
+                    'currentBranch' => null,
+                ];
+                continue;
+            }
 
-                // Ensure we have the latest remote state (throttled)
-                $throttleKey = 'git_manager_last_fetch_' . $repo->id;
-                if (false === get_transient($throttleKey)) {
-                    SecureGitRunner::runInDirectory($repo->path, 'fetch --all --prune', ['low_priority' => true]);
-                    set_transient($throttleKey, time(), 60);
-                }
+            // Get detailed status with branch information
+            $statusResult = SecureGitRunner::runInDirectory($repo->path, 'status --porcelain --branch');
+            $commitResult = SecureGitRunner::runInDirectory($repo->path, 'log -1 --pretty=format:%h|%s|%an|%ar');
 
-                // Get branch information
-                $branchResult  = SecureGitRunner::runInDirectory($repo->path, 'rev-parse --abbrev-ref HEAD');
-                $currentBranch = trim($branchResult['output'] ?? '');
-
-                if (!$branchResult['success'] || ('' === $currentBranch || '0' === $currentBranch)) {
-                    $results[$repo->id] = [
-                        'status'        => null,
-                        'status_error'  => 'Failed to determine current branch',
-                        'latest_commit' => null,
-                        'commit_error'  => 'Failed to determine current branch',
-                        'behind'        => 0,
-                        'ahead'         => 0,
-                        'hasChanges'    => false,
-                        'currentBranch' => null,
-                    ];
-                    continue;
-                }
-
-                // Get detailed status with branch information
-                $statusResult = SecureGitRunner::runInDirectory($repo->path, 'status --porcelain --branch');
-                $commitResult = SecureGitRunner::runInDirectory($repo->path, 'log -1 --pretty=format:%h|%s|%an|%ar');
-
-                if (!$statusResult['success']) {
-                    $errorMessage = 'Failed to get repository status';
-                    if (!empty($statusResult['output'])) {
-                        $errorMessage .= ': ' . trim($statusResult['output']);
-                    }
-
-                    $results[$repo->id] = [
-                        'status'        => null,
-                        'status_error'  => $errorMessage,
-                        'latest_commit' => $commitResult['success'] ? $commitResult['output'] : null,
-                        'commit_error'  => $commitResult['success'] ? null : $commitResult['output'],
-                        'behind'        => 0,
-                        'ahead'         => 0,
-                        'hasChanges'    => false,
-                        'currentBranch' => $currentBranch,
-                    ];
-                    continue;
-                }
-
-                // Parse the status output to extract behind/ahead information
-                $statusOutput = $statusResult['output'] ?? '';
-                $lines        = explode("\n", trim($statusOutput));
-
-                $behind     = 0;
-                $ahead      = 0;
-                $hasChanges = false;
-
-                foreach ($lines as $line) {
-                    $line = trim($line);
-
-                    // Check for branch status line (starts with ##)
-                    if (0 === strpos($line, '##')) {
-                        // Extract behind/ahead information
-                        if (preg_match('/behind (\d+)/', $line, $matches)) {
-                            $behind = (int) $matches[1];
-                        }
-
-                        if (preg_match('/ahead (\d+)/', $line, $matches)) {
-                            $ahead = (int) $matches[1];
-                        }
-                    } elseif ('' !== $line && '0' !== $line) {
-                        // Any non-empty line that doesn't start with ## indicates changes
-                        $hasChanges = true;
-                    }
+            if (!$statusResult['success']) {
+                $errorMessage = 'Failed to get repository status';
+                if (!empty($statusResult['output'])) {
+                    $errorMessage .= ': ' . trim($statusResult['output']);
                 }
 
                 $results[$repo->id] = [
-                    'status'        => $statusResult['success'] ? $statusResult['output'] : null,
-                    'status_error'  => $statusResult['success'] ? null : $statusResult['output'],
+                    'status'        => null,
+                    'status_error'  => $errorMessage,
                     'latest_commit' => $commitResult['success'] ? $commitResult['output'] : null,
                     'commit_error'  => $commitResult['success'] ? null : $commitResult['output'],
-                    'behind'        => $behind,
-                    'ahead'         => $ahead,
-                    'hasChanges'    => $hasChanges,
+                    'behind'        => 0,
+                    'ahead'         => 0,
+                    'hasChanges'    => false,
                     'currentBranch' => $currentBranch,
-                    'rawOutput'     => $statusOutput,
                 ];
+                continue;
             }
 
-            set_transient($cache_key, $results, 30); // Cache for 30 seconds
+            // Parse the status output to extract behind/ahead information
+            $statusOutput = $statusResult['output'] ?? '';
+            $lines        = explode("\n", trim($statusOutput));
 
-            wp_send_json_success($results);
+            $behind     = 0;
+            $ahead      = 0;
+            $hasChanges = false;
 
-        } catch (\Exception $exception) {
-            $auditLogger = AuditLogger::instance();
-            $auditLogger->log('error', 'git_bulk_status_failed', [
-                'error' => $exception->getMessage(),
-            ]);
-            wp_send_json_error($exception->getMessage());
+            foreach ($lines as $line) {
+                $line = trim($line);
+
+                // Check for branch status line (starts with ##)
+                if (0 === strpos($line, '##')) {
+                    // Extract behind/ahead information
+                    if (preg_match('/behind (\d+)/', $line, $matches)) {
+                        $behind = (int) $matches[1];
+                    }
+
+                    if (preg_match('/ahead (\d+)/', $line, $matches)) {
+                        $ahead = (int) $matches[1];
+                    }
+                } elseif ('' !== $line && '0' !== $line) {
+                    // Any non-empty line that doesn't start with ## indicates changes
+                    $hasChanges = true;
+                }
+            }
+
+            $results[$repo->id] = [
+                'status'        => $statusResult['success'] ? $statusResult['output'] : null,
+                'status_error'  => $statusResult['success'] ? null : $statusResult['output'],
+                'latest_commit' => $commitResult['success'] ? $commitResult['output'] : null,
+                'commit_error'  => $commitResult['success'] ? null : $commitResult['output'],
+                'behind'        => $behind,
+                'ahead'         => $ahead,
+                'hasChanges'    => $hasChanges,
+                'currentBranch' => $currentBranch,
+                'rawOutput'     => $statusOutput,
+            ];
         }
+
+        wp_send_json_success($results);
     }
 }
