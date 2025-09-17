@@ -20,6 +20,8 @@ class RepositoryManager
     /** @var Repository[] */
     private array $cache = [];
 
+    private bool $loaded = false;
+
     private static ?self $instance = null;
 
     public static function instance(): self
@@ -29,7 +31,16 @@ class RepositoryManager
 
     private function __construct()
     {
+    }
+
+    private function ensureLoaded(): void
+    {
+        if ($this->loaded) {
+            return;
+        }
+
         $this->load();
+        $this->loaded = true;
     }
 
     private function load(): void
@@ -63,16 +74,19 @@ class RepositoryManager
     /** @return Repository[] */
     public function all(): array
     {
+        $this->ensureLoaded();
         return array_values($this->cache);
     }
 
     public function get(string $id): ?Repository
     {
+        $this->ensureLoaded();
         return $this->cache[$id] ?? null;
     }
 
     public function getActiveId(): ?string
     {
+        $this->ensureLoaded();
         $id = get_option(self::ACTIVE_KEY);
 
         return $id && isset($this->cache[$id]) ? $id : null;
@@ -80,6 +94,7 @@ class RepositoryManager
 
     public function setActive(string $id): bool
     {
+        $this->ensureLoaded();
         if (! isset($this->cache[$id])) {
             return false;
         }
@@ -91,6 +106,7 @@ class RepositoryManager
 
     public function add(array $data): Repository
     {
+        $this->ensureLoaded();
         $repo                   = new Repository($data);
         $this->cache[$repo->id] = $repo;
         $this->persist();
@@ -100,6 +116,7 @@ class RepositoryManager
 
     public function update(string $id, array $data): ?Repository
     {
+        $this->ensureLoaded();
         $repo = $this->get($id);
         if (!$repo instanceof Repository) {
             return null;
@@ -118,6 +135,7 @@ class RepositoryManager
 
     public function delete(string $id): bool
     {
+        $this->ensureLoaded();
         if (! isset($this->cache[$id])) {
             return false;
         }
@@ -183,6 +201,7 @@ class RepositoryManager
      */
     public function cleanupLegacyData(): void
     {
+        $this->ensureLoaded();
         delete_option('git_manager_repo_path');
         delete_option('git_manager_repos');
 

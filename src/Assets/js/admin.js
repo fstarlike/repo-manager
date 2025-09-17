@@ -314,6 +314,8 @@ class GitManager {
                 this.positionModal(modal);
             }
         });
+
+        this.updateFileBrowserHeight();
     }
 
     /**
@@ -1673,21 +1675,12 @@ class GitManager {
         }
 
         // Browse path button
-        const browseBtn = document.getElementById("browse-path-btn");
+        const browseBtn = document.getElementById("add-repo-browse-path");
         if (browseBtn) {
             browseBtn.onclick = () => {
                 // Ensure the target is set correctly for add repository
                 this.directorySelectorTarget = "#add-repo-path";
                 this.browsePath(this.directorySelectorTarget);
-            };
-        }
-
-        // Form submission
-        const form = document.getElementById("add-repo-form");
-        if (form) {
-            form.onsubmit = (e) => {
-                e.preventDefault();
-                this.handleAddRepositorySubmit(form);
             };
         }
 
@@ -1712,191 +1705,38 @@ class GitManager {
         const formData = new FormData(form);
         const data = Object.fromEntries(formData.entries());
 
-        // Check if this is an existing repository
-        const isExistingRepo = data.existing_repo === "on";
-
-        // Validate form - URL is only required for new repositories
-        if (!data.repo_path) {
-            this.showNotification(
-                "Please fill in the local path field",
-                "error"
-            );
+        // Validate form
+        if (!this.validateAddRepositoryForm(data)) {
             return;
-        }
-
-        if (!isExistingRepo && !data.repo_url) {
-            this.showNotification(
-                "Please fill in the repository URL field",
-                "error"
-            );
-            return;
-        }
-
-        // Validate private repository authentication
-        const isPrivateRepo = data.private_repo === "on";
-        if (isPrivateRepo) {
-            const authType = data.auth_type;
-
-            if (!authType) {
-                this.showNotification(
-                    "Please select an authentication method",
-                    "error"
-                );
-                return;
-            }
-
-            if (authType === "ssh") {
-                if (!data.private_key || !data.private_key.trim()) {
-                    // If SSH URL is used but no SSH key provided, suggest switching to HTTPS
-                    if (data.repo_url && data.repo_url.startsWith("git@")) {
-                        this.showNotification(
-                            "SSH URL detected but no SSH key provided. Please either provide an SSH private key or switch to HTTPS authentication.",
-                            "error"
-                        );
-                    } else {
-                        this.showNotification(
-                            "SSH private key is required for SSH authentication. Please provide a private key or switch to HTTPS authentication.",
-                            "error"
-                        );
-                    }
-                    return;
-                }
-
-                // Basic SSH key validation
-                const sshKeyPattern =
-                    /^-----BEGIN (OPENSSH|RSA|DSA|EC) PRIVATE KEY-----/;
-                if (!sshKeyPattern.test(data.private_key.trim())) {
-                    this.showNotification(
-                        "Please enter a valid SSH private key",
-                        "error"
-                    );
-                    return;
-                }
-            } else if (authType === "https") {
-                if (!data.username || !data.username.trim()) {
-                    this.showNotification(
-                        "Username is required for HTTPS authentication",
-                        "error"
-                    );
-                    return;
-                }
-
-                if (!data.token || !data.token.trim()) {
-                    this.showNotification(
-                        "Personal access token is required for HTTPS authentication",
-                        "error"
-                    );
-                    return;
-                }
-
-                // Basic token validation for common patterns
-                const tokenPatterns = [
-                    /^ghp_[A-Za-z0-9_]{36}$/, // GitHub personal access token
-                    /^gho_[A-Za-z0-9_]{36}$/, // GitHub OAuth token
-                    /^ghu_[A-Za-z0-9_]{36}$/, // GitHub user-to-server token
-                    /^ghr_[A-Za-z0-9_]{36}$/, // GitHub refresh token
-                    /^[A-Za-z0-9]{20,}$/, // Generic token pattern
-                ];
-
-                const isValidToken = tokenPatterns.some((pattern) =>
-                    pattern.test(data.token.trim())
-                );
-                if (!isValidToken) {
-                    this.showNotification(
-                        "Please enter a valid personal access token",
-                        "error"
-                    );
-                    return;
-                }
-            }
         }
 
         // Show loading state
-        const submitBtn = document.getElementById("submit-add-repo");
+        const submitBtn = form.querySelector('button[type="submit"]');
         const originalText = submitBtn.innerHTML;
         submitBtn.innerHTML = `
-            <svg class="animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-                <path d="M21 12a9 9 0 11-6.219-8.56"/>
-            </svg>
+            <div class="progress-spinner" style="width: 16px; height: 16px; border-width: 2px;"></div>
             Adding Repository...
         `;
         submitBtn.disabled = true;
 
         try {
-            // If existing repo and user has not entered Name/Branch before choosing path,
-            // auto-fill them from the selected repo path
-            if (data.existing_repo === "on") {
-                const urlInput = document.getElementById("add-repo-url");
-                const branchInput = document.getElementById("add-repo-branch");
-                const pathInput = document.getElementById("add-repo-path");
-                const repoPathVal = (pathInput?.value || "").trim();
-                if (repoPathVal) {
-                    const inferredName =
-                        repoPathVal
-                            .split(/[\\\/]/)
-                            .filter(Boolean)
-                            .pop() || "";
-                    if (
-                        urlInput &&
-                        (!urlInput.value || !urlInput.value.trim())
-                    ) {
-                        urlInput.value = inferredName;
-                    }
-                    if (
-                        branchInput &&
-                        (!branchInput.value || !branchInput.value.trim())
-                    ) {
-                        branchInput.value = "main";
-                    }
-                }
-            }
-            // Auto-convert SSH URL to HTTPS if HTTPS credentials are provided
-            let repoUrl = data.repo_url;
-            const isExisting = data.existing_repo === "on";
-            let repoName = "";
-            if (isExisting) {
-                // When existing repo, the field holds the Name (required)
-                repoName = (data.repo_url || "").trim();
-                repoUrl = ""; // server will ignore url for existing
-            }
-            if (
-                data.repo_url &&
-                data.repo_url.startsWith("git@") &&
-                data.auth_type === "https" &&
-                data.username &&
-                data.token
-            ) {
-                // Convert git@github.com:user/repo.git to https://github.com/user/repo.git
-                repoUrl = data.repo_url.replace(
-                    /^git@([^:]+):([^\/]+)\/([^\/]+?)(?:\.git)?$/,
-                    "https://$1/$2/$3.git"
-                );
-            }
-
-            // Prepare the data for AJAX
+            // Real AJAX call to WordPress backend
             const ajaxData = {
-                action: "git_manager_add_repository",
+                action: gitManagerAjax.actions.add_repository,
                 nonce: gitManagerAjax.nonce,
-                remoteUrl: repoUrl,
+                name: data.repo_name,
                 path: data.repo_path,
-                repo_branch: data.repo_branch || "",
-                existing_repo: data.existing_repo === "on" ? "1" : "0",
+                authType: data.auth_type,
             };
-            if (isExisting) {
-                ajaxData.name = repoName;
-            }
 
-            // Handle authentication for private repositories
+            // Handle authentication
             const isPrivateRepo = data.private_repo === "on";
-            if (isPrivateRepo) {
-                const authType = data.auth_type || "ssh";
-                ajaxData.authType = authType;
+            const authType = data.auth_type || "ssh";
 
+            if (isPrivateRepo) {
                 if (authType === "ssh") {
                     const privateKey = data.private_key;
-                    if (privateKey && privateKey.trim()) {
-                        ajaxData.private_key = privateKey;
-                    } else {
+                    if (!privateKey || !privateKey.trim()) {
                         throw new Error(
                             "SSH private key is required for private repositories"
                         );
@@ -2681,21 +2521,25 @@ class GitManager {
     }
 
     startLiveUpdates() {
-        // Refresh repository list every 20s
+        // Refresh repository list every ~8 hours (skip when tab not visible)
         if (!this._repoListPoller) {
             this._repoListPoller = setInterval(() => {
+                if (document.hidden) return;
                 // Use silent refresh to avoid flicker when no changes
                 this.refreshRepositoriesSilently();
-            }, 20000);
+            }, 28800000);
         }
 
-        // Refresh active repository details every 10s
+        // Refresh active repository details every ~8 hours (skip when tab not visible)
         if (!this._repoDetailsPoller) {
             this._repoDetailsPoller = setInterval(() => {
-                if (this.currentRepo) {
+                if (document.hidden) return;
+                // Only refresh details if repo is selected and overview tab is active
+                const isOverviewActive = this.activeTab === "overview";
+                if (this.currentRepo && isOverviewActive) {
                     this.loadRepositoryDetails(this.currentRepo);
                 }
-            }, 10000);
+            }, 28800000);
         }
 
         // Update live badge
@@ -2714,6 +2558,22 @@ class GitManager {
                     this.loadRepositoryDetails(this.currentRepo);
                 }
             }
+        });
+
+        // When tab becomes visible again, trigger a refresh
+        document.addEventListener("visibilitychange", () => {
+            if (!document.hidden) {
+                this.refreshRepositoriesSilently();
+                if (this.currentRepo && this.activeTab === "overview") {
+                    this.loadRepositoryDetails(this.currentRepo);
+                }
+            }
+        });
+
+        // Cleanup on unload
+        window.addEventListener("beforeunload", () => {
+            if (this._repoListPoller) clearInterval(this._repoListPoller);
+            if (this._repoDetailsPoller) clearInterval(this._repoDetailsPoller);
         });
     }
 

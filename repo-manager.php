@@ -194,7 +194,7 @@ add_action('init', function () {
         $auditLogger     = AuditLogger::instance();
         $credentialStore = new CredentialStore();
         $systemStatus    = new SystemStatus();
-        (new MultiRepoAjax($rateLimiter, $auditLogger, $credentialStore, $systemStatus))->register();
+        new MultiRepoAjax($rateLimiter, $auditLogger, $credentialStore, $systemStatus);
     }
 });
 
