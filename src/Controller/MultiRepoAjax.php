@@ -10,6 +10,7 @@ use WPGitManager\Service\GitCommandRunner;
 use WPGitManager\Service\RateLimiter;
 use WPGitManager\Service\RepositoryManager;
 use WPGitManager\Service\SecureGitRunner;
+use WPGitManager\Service\SystemStatus;
 
 if (! defined('ABSPATH')) {
     exit;
@@ -87,11 +88,8 @@ class MultiRepoAjax
 
     private function getRepositoryId(): string
     {
-        // Verify nonce first
-        if (! wp_verify_nonce(sanitize_text_field(sanitize_text_field(wp_unslash($_POST['nonce'] ?? ''))), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
-
+        // Nonce is verified in ensureAllowed() or manually in the public AJAX handler.
+        // phpcs:ignore WordPress.Security.NonceVerification.Missing
         $id = sanitize_text_field(wp_unslash($_POST['id'] ?? $_POST['repo_id'] ?? ''));
 
         return trim($id);
@@ -2516,25 +2514,51 @@ class MultiRepoAjax
     {
         $this->ensureAllowed();
 
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
+        $repoId = $this->getRepositoryId();
+
+        if ('' === $repoId || '0' === $repoId) {
+            wp_send_json_error('No repository specified');
         }
 
-        wp_send_json_success(['message' => 'SSH fix not implemented in multi-repo mode']);
+        $repo = RepositoryManager::instance()->get($repoId);
+        if (!$repo instanceof Repository) {
+            wp_send_json_error('Repository not found');
+        }
+
+        // Check if auto-fix is enabled
+        if (! GitManager::is_auto_fix_enabled()) {
+            wp_send_json_error([
+                'message'           => 'Automatic fixes are disabled. Please enable them in the settings or contact your administrator.',
+                'solution'          => 'Go to Repo Manager → Settings and enable "Automatic Fixes" option, or ask your administrator to enable it.',
+                'auto_fix_disabled' => true,
+            ]);
+        }
+
+        $result = SecureGitRunner::fixRepositoryPermissions($repo->path);
+
+        if ($result['success']) {
+            wp_send_json_success([
+                'message' => 'Permissions fixed successfully',
+                'details' => $result['details'],
+            ]);
+        } else {
+            wp_send_json_error([
+                'message'     => 'Permission fix failed. See details for more information.',
+                'details'     => $result['details'] ?? [],
+                'raw_output'  => $result['output'] ?? 'No output.',
+            ]);
+        }
     }
 
     public function saveRoles(): void
     {
         $this->ensureAllowed();
 
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
+        $allowedRoles = isset($_POST['roles']) && is_array($_POST['roles'])
+            ? array_map('sanitize_text_field', wp_unslash($_POST['roles']))
+            : [];
 
-        $roles = sanitize_text_field(wp_unslash($_POST['roles'] ?? ''));
-        update_option('git_manager_allowed_roles', explode(',', $roles));
+        update_option('git_manager_allowed_roles', $allowedRoles);
         wp_send_json_success(['message' => 'Roles saved successfully']);
     }
 
@@ -2542,19 +2566,23 @@ class MultiRepoAjax
     {
         $this->ensureAllowed();
 
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
+        $repoId = $this->getRepositoryId();
+        if ('' === $repoId || '0' === $repoId) {
+            wp_send_json_error('No repository specified');
         }
 
-        $activeRepo = RepositoryManager::instance()->getActiveId();
-        if (! $activeRepo) {
-            wp_send_json_error('No active repository');
-        }
-
-        $repo = RepositoryManager::instance()->get($activeRepo);
+        $repo = RepositoryManager::instance()->get($repoId);
         if (!$repo instanceof Repository) {
-            wp_send_json_error('Active repository not found');
+            wp_send_json_error('Repository not found');
+        }
+
+        // Check if auto-fix is enabled
+        if (! GitManager::is_auto_fix_enabled()) {
+            wp_send_json_error([
+                'message'           => 'Automatic fixes are disabled. Please enable them in the settings or contact your administrator.',
+                'solution'          => 'Go to Repo Manager → Settings and enable "Automatic Fixes" option, or ask your administrator to enable it.',
+                'auto_fix_disabled' => true,
+            ]);
         }
 
         $result = GitCommandRunner::run($repo->path, 'config --local --add safe.directory ' . escapeshellarg($repo->path));
@@ -2569,34 +2597,15 @@ class MultiRepoAjax
     {
         $this->ensureAllowed();
 
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
-        }
-
-        $step   = sanitize_text_field(wp_unslash($_POST['step'] ?? ''));
-        $repoId = sanitize_text_field(wp_unslash($_POST['repo_id'] ?? ''));
-
-        if (empty($step)) {
-            wp_send_json_error([
-                'status'   => 'error',
-                'message'  => 'Step parameter is required',
-                'solution' => 'Please specify a troubleshooting step',
-            ]);
-        }
-
         try {
-            // Get repository path
+            $step     = isset($_POST['step']) ? sanitize_text_field(wp_unslash($_POST['step'])) : '';
             $repoPath = '';
-            if (! empty($repoId)) {
+
+            if (! empty($this->getRepositoryId())) {
                 // Use specific repository
-                $repo = RepositoryManager::instance()->get($repoId);
+                $repo = RepositoryManager::instance()->get($this->getRepositoryId());
                 if (!$repo instanceof Repository) {
-                    wp_send_json_error([
-                        'status'   => 'error',
-                        'message'  => 'Repository not found with ID: ' . $repoId,
-                        'solution' => 'Please check the repository ID or refresh the page',
-                    ]);
+                    throw new Exception('Repository not found');
                 }
 
                 $repoPath = $repo->path;
@@ -2604,20 +2613,12 @@ class MultiRepoAjax
                 // Use active repository
                 $activeRepo = RepositoryManager::instance()->getActiveId();
                 if (! $activeRepo) {
-                    wp_send_json_error([
-                        'status'   => 'error',
-                        'message'  => 'No active repository found',
-                        'solution' => 'Please select a repository first',
-                    ]);
+                    throw new Exception('No active repository found');
                 }
 
                 $repo = RepositoryManager::instance()->get($activeRepo);
                 if (!$repo instanceof Repository) {
-                    wp_send_json_error([
-                        'status'   => 'error',
-                        'message'  => 'Active repository not found',
-                        'solution' => 'Please refresh the page and try again',
-                    ]);
+                    throw new Exception('Active repository not found');
                 }
 
                 $repoPath = $repo->path;
@@ -3368,18 +3369,12 @@ class MultiRepoAjax
     {
         $this->ensureAllowed();
 
-        // Verify nonce
-        if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'git_manager_action')) {
-            wp_send_json_error('Invalid nonce');
+        $repoId = $this->getRepositoryId();
+        if ('' === $repoId || '0' === $repoId) {
+            wp_send_json_error('No repository specified');
         }
 
-        $id = $this->getRepositoryId();
-
-        if ('' === $id || '0' === $id) {
-            wp_send_json_error('Repository ID is required');
-        }
-
-        $repo = RepositoryManager::instance()->get($id);
+        $repo = RepositoryManager::instance()->get($repoId);
         if (!$repo instanceof Repository) {
             wp_send_json_error('Repository not found');
         }

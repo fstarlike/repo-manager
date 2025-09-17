@@ -79,10 +79,18 @@ class SecureGitRunner
         // Validate arguments
         $allowedArgs   = self::$allowedCommands[$baseCommand];
         $sanitizedArgs = [];
+        $isCommitMsg   = false;
 
         foreach ($args as $arg) {
             $arg = trim($arg);
-            if ('' === $arg || '0' === $arg) {
+            if ('' === $arg) {
+                continue;
+            }
+
+            if ($isCommitMsg) {
+                // This argument is the commit message content, allow more characters
+                $sanitizedArgs[] = $arg;
+                $isCommitMsg     = false;
                 continue;
             }
 
@@ -90,6 +98,10 @@ class SecureGitRunner
             if (0 === strpos($arg, '--') || 0 === strpos($arg, '-')) {
                 if (in_array($arg, $allowedArgs)) {
                     $sanitizedArgs[] = $arg;
+                    // Check if this is the commit message flag
+                    if ('-m' === $arg) {
+                        $isCommitMsg = true;
+                    }
                 }
             } else {
                 // For non-flag arguments, apply strict validation
@@ -105,21 +117,24 @@ class SecureGitRunner
      */
     private static function sanitizeArgument(string $arg): string
     {
-        // Remove potentially dangerous characters
-        $arg = preg_replace('/[;&|`$(){}<>]/', '', $arg);
+        // Allow a safe set of characters for paths, branches, etc.
+        // This is intentionally stricter than full shell escaping, which happens later.
+        if (!preg_match('/^[a-zA-Z0-9._\-\/@]+$/', $arg)) {
+            $safeArg = function_exists('sanitize_text_field') ? sanitize_text_field($arg) : $arg;
+            throw new \InvalidArgumentException(sprintf('Invalid characters in argument: %s', esc_html($safeArg)));
+        }
+
+        // Prevent path traversal
+        if (strpos($arg, '..') !== false) {
+            throw new \InvalidArgumentException('Path traversal detected in argument');
+        }
 
         // Limit length
-        if (strlen($arg) > 255) {
-            $arg = substr($arg, 0, 255);
+        if (strlen($arg) > 1024) {
+            $arg = substr($arg, 0, 1024);
         }
 
-        // Additional validation for specific patterns
-        if (preg_match('/^[a-zA-Z0-9._\-\/]+$/', $arg)) {
-            return $arg;
-        }
-
-        $safeArg = function_exists('sanitize_text_field') ? sanitize_text_field($arg) : $arg;
-        throw new \InvalidArgumentException(sprintf('Invalid argument: %s', esc_html($safeArg)));
+        return $arg;
     }
 
     /**
@@ -314,6 +329,8 @@ class SecureGitRunner
 
                         // Check output size limit
                         if (strlen($output) > self::MAX_OUTPUT_SIZE) {
+                            fclose($pipes[1]);
+                            fclose($pipes[2]);
                             proc_terminate($process);
                             throw new \RuntimeException('Output size limit exceeded');
                         }
@@ -323,6 +340,8 @@ class SecureGitRunner
 
             // Check timeout
             if ((time() - $startTime) > self::MAX_EXECUTION_TIME) {
+                fclose($pipes[1]);
+                fclose($pipes[2]);
                 proc_terminate($process);
                 throw new \RuntimeException('Command execution timeout');
             }
@@ -364,17 +383,18 @@ class SecureGitRunner
     private static function maskSensitiveData(string $output): string
     {
         // Mask GitHub tokens
-        $output = preg_replace('/(ghp_\w{36})/', '[masked]', $output);
-        $output = preg_replace('/(gho_\w{36})/', '[masked]', $output);
-        $output = preg_replace('/(ghu_\w{36})/', '[masked]', $output);
-        $output = preg_replace('/(ghr_\w{36})/', '[masked]', $output);
+        $output = preg_replace('/(ghp_\w{36})/', '[masked_token]', $output);
+        $output = preg_replace('/(gho_\w{36})/', '[masked_token]', $output);
+        $output = preg_replace('/(ghu_\w{36})/', '[masked_token]', $output);
+        $output = preg_replace('/(ghr_\w{36})/', '[masked_token]', $output);
 
-        // Mask SSH keys and hashes
-        $output = preg_replace('/([A-Za-z0-9]{40})/', '[masked]', $output);
-        $output = preg_replace('/([A-Za-z0-9]{64})/', '[masked]', $output);
+        // Mask SSH keys and commit hashes (SHA-1 and SHA-256)
+        // Use word boundaries to avoid masking parts of other strings
+        $output = preg_replace('/\b([a-f0-9]{40})\b/', '[masked_hash]', $output);
+        $output = preg_replace('/\b([a-f0-9]{64})\b/', '[masked_hash]', $output);
 
         // Mask URLs with credentials
-        $output = preg_replace('#(https?://)([^:@\s]{2,}):([^@\s]{2,})@#', '$1$2:[masked]@', $output);
+        $output = preg_replace('#(https?://)([^:@\s]{2,}):([^@\s]{2,})@#', '$1$2:[masked_password]@', $output);
 
         return $output;
     }
@@ -626,6 +646,18 @@ class SecureGitRunner
                     @chmod($wrapper, 0755);
                 }
                 $prefix .= 'GIT_SSH=' . escapeshellarg($wrapper) . ' ';
+
+                // Register cleanup for wrapper and key
+                register_shutdown_function(function () use ($wrapper, $keyPath) {
+                    if (file_exists($wrapper)) {
+                        @unlink($wrapper);
+                    }
+                    // Consider if key should be deleted if it's meant to be persistent
+                    // If key is truly temporary, uncomment below
+                    // if (file_exists($keyPath)) {
+                    //     @unlink($keyPath);
+                    // }
+                });
             }
         }
 

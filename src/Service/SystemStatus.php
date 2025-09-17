@@ -267,8 +267,9 @@ class SystemStatus
             $result = SecureGitRunner::runSshCommand($installCommand);
 
             if ($result['success']) {
-                // Verify installation
-                $verifyResult = SecureGitRunner::gitVersion();
+                // Verify installation on the remote host
+                $verifyCommand = $sshCommand . ' "git --version"';
+                $verifyResult  = SecureGitRunner::runSshCommand($verifyCommand);
                 if ($verifyResult['success']) {
                     return [
                         'success' => true,
@@ -297,15 +298,32 @@ class SystemStatus
     private static function buildSSHCommand(string $host, string $username, string $password = '', string $keyContent = '', string $port = ''): string
     {
         $sshCmd = 'ssh';
-        $tempKeyFile = '';
+        $tempKeyFile = null;
 
         if ($keyContent) {
-            $tempKeyFile = wp_tempnam('ssh-key-');
-            if (!$tempKeyFile || !file_put_contents($tempKeyFile, $keyContent) || !chmod($tempKeyFile, 0600)) {
-                if ($tempKeyFile && file_exists($tempKeyFile)) {
-                    unlink($tempKeyFile);
+            $uploads = wp_upload_dir(null, false);
+            $keysDir = rtrim($uploads['basedir'], '\\/') . '/repo-manager-keys';
+            if (!is_dir($keysDir)) {
+                if (!wp_mkdir_p($keysDir)) {
+                    throw new \Exception('Could not create directory for SSH keys.');
                 }
-                throw new \Exception('Could not create temporary SSH key file.');
+                // Add security files
+                $htAccess = $keysDir . '/.htaccess';
+                if (!file_exists($htAccess)) {
+                    @file_put_contents($htAccess, 'deny from all');
+                }
+                $indexFile = $keysDir . '/index.php';
+                if (!file_exists($indexFile)) {
+                    @file_put_contents($indexFile, '<?php // Silence is golden.');
+                }
+            }
+
+            $tempKeyFile = $keysDir . '/temp_key_' . bin2hex(random_bytes(8)) . '.pem';
+            if (file_put_contents($tempKeyFile, $keyContent) === false || !chmod($tempKeyFile, 0600)) {
+                if (file_exists($tempKeyFile)) {
+                    @unlink($tempKeyFile);
+                }
+                throw new \Exception('Could not create temporary SSH key file in a secure location.');
             }
             $sshCmd .= ' -i ' . escapeshellarg($tempKeyFile);
         }
@@ -341,7 +359,10 @@ class SystemStatus
         if ($tempKeyFile && file_exists($tempKeyFile)) {
             register_shutdown_function(function () use ($tempKeyFile) {
                 if (file_exists($tempKeyFile)) {
-                    unlink($tempKeyFile);
+                    if (!@unlink($tempKeyFile)) {
+                        // Log error if unlink fails
+                        error_log('Failed to delete temporary SSH key file on shutdown: ' . $tempKeyFile);
+                    }
                 }
             });
         }
@@ -436,6 +457,9 @@ class SystemStatus
 
     private static function memorySufficient($memory): bool
     {
+        if ('-1' === trim((string) $memory)) {
+            return true; // Unlimited memory
+        }
         $bytes = self::toBytes($memory);
         return $bytes === 0 ? true : $bytes >= 256 * 1024 * 1024; // 256M
     }
