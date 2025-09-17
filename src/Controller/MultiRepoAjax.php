@@ -6,10 +6,9 @@ use WPGitManager\Admin\GitManager;
 use WPGitManager\Model\Repository;
 use WPGitManager\Service\AuditLogger;
 use WPGitManager\Service\CredentialStore;
-use WPGitManager\Service\GitCommandRunner;
+use WPGitManager\Service\SecureGitRunner;
 use WPGitManager\Service\RateLimiter;
 use WPGitManager\Service\RepositoryManager;
-use WPGitManager\Service\SecureGitRunner;
 use WPGitManager\Service\SystemStatus;
 
 if (! defined('ABSPATH')) {
@@ -2078,7 +2077,7 @@ class MultiRepoAjax
         $branches = [];
 
         // Get local branches
-        $localResult = GitCommandRunner::run($repo->path, 'branch');
+        $localResult = SecureGitRunner::run($repo->path, 'branch');
         if (!empty(trim((string) ($localResult['output'] ?? '')))) {
             $localLines = explode("\n", trim($localResult['output']));
             foreach ($localLines as $line) {
@@ -2090,7 +2089,7 @@ class MultiRepoAjax
         }
 
         // Get remote branches
-        $remoteResult = GitCommandRunner::run($repo->path, 'branch -r');
+        $remoteResult = SecureGitRunner::run($repo->path, 'branch', ['-r']);
         if (!empty(trim((string) ($remoteResult['output'] ?? '')))) {
             $remoteLines = explode("\n", trim($remoteResult['output']));
             foreach ($remoteLines as $line) {
@@ -2108,7 +2107,7 @@ class MultiRepoAjax
 
         $branches = array_keys($branches);
 
-        $activeBranchResult = GitCommandRunner::run($repo->path, 'rev-parse --abbrev-ref HEAD');
+        $activeBranchResult = SecureGitRunner::run($repo->path, 'rev-parse', ['--abbrev-ref', 'HEAD']);
         $activeBranch       = $activeBranchResult['success'] ? trim($activeBranchResult['output']) : '';
 
         // Custom sort branches
@@ -2585,7 +2584,7 @@ class MultiRepoAjax
             ]);
         }
 
-        $result = GitCommandRunner::run($repo->path, 'config --local --add safe.directory ' . escapeshellarg($repo->path));
+        $result = SecureGitRunner::run($repo->path, 'config', ['--local', '--add', 'safe.directory', $repo->path]);
         if ($result['success']) {
             wp_send_json_success(['message' => 'Safe directory configured']);
         } else {
