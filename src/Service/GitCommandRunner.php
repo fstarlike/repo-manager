@@ -3,6 +3,7 @@
 namespace WPGitManager\Service;
 
 use WPGitManager\Admin\GitManager;
+use WPGitManager\Service\SecureGitRunner;
 
 if (! defined('ABSPATH')) {
     exit;
@@ -72,7 +73,7 @@ class GitCommandRunner
             $repoPath = self::validateRepoPath($repoPath);
             $gitArgs  = self::validateGitArgs($gitArgs);
 
-            if (! is_dir($repoPath . '/.git')) {
+            if (! SecureGitRunner::isGitRepositoryPath($repoPath)) {
                 return ['success' => false, 'output' => 'Not a git repository'];
             }
         } catch (\InvalidArgumentException $invalidArgumentException) {

@@ -21,11 +21,17 @@ if (! defined('ABSPATH')) {
  */
 class MultiRepoAjax
 {
-    public function register(): void
+    private RateLimiter $rateLimiter;
+    private AuditLogger $auditLogger;
+    private CredentialStore $credentialStore;
+
+    public function __construct(RateLimiter $rateLimiter, AuditLogger $auditLogger, CredentialStore $credentialStore)
     {
+        $this->rateLimiter       = $rateLimiter;
+        $this->auditLogger       = $auditLogger;
+        $this->credentialStore   = $credentialStore;
         add_action('wp_ajax_git_manager_repo_list', [$this, 'list']);
         add_action('wp_ajax_git_manager_get_repos', [$this, 'list']);
-        add_action('wp_ajax_git_manager_repo_add', [$this, 'add']);
         add_action('wp_ajax_git_manager_add_repository', [$this, 'add']);
         add_action('wp_ajax_git_manager_repo_update', [$this, 'update']);
         add_action('wp_ajax_git_manager_repo_delete', [$this, 'delete']);
@@ -34,7 +40,6 @@ class MultiRepoAjax
         add_action('wp_ajax_git_manager_clone_repo', [$this, 'clone']);
         add_action('wp_ajax_git_manager_repo_git', [$this, 'gitOp']);
         add_action('wp_ajax_git_manager_repo_credentials', [$this, 'saveCredentials']);
-        add_action('wp_ajax_git_manager_repo_dirs', [$this, 'listDirectories']);
         add_action('wp_ajax_git_manager_repo_dirs', [$this, 'listDirectories']);
         add_action('wp_ajax_git_manager_dir_create', [$this, 'createDirectory']);
         add_action('wp_ajax_git_manager_dir_delete', [$this, 'deleteDirectory']);
@@ -46,9 +51,7 @@ class MultiRepoAjax
         add_action('wp_ajax_git_manager_repo_log', [$this, 'detailedLog']);
         add_action('wp_ajax_git_manager_detailed_log', [$this, 'detailedLog']);
         add_action('wp_ajax_git_manager_repo_set_active', [$this, 'setActive']);
-        add_action('wp_ajax_git_manager_repo_add_existing', [$this, 'addExisting']);
         add_action('wp_ajax_git_manager_add_existing_repo', [$this, 'addExisting']);
-        add_action('wp_ajax_git_manager_repo_details', [$this, 'getDetails']);
         add_action('wp_ajax_git_manager_get_repo_details', [$this, 'getDetails']);
         add_action('wp_ajax_git_manager_repo_status', [$this, 'getStatus']);
 
@@ -74,7 +77,6 @@ class MultiRepoAjax
         add_action('wp_ajax_git_manager_troubleshoot', [$this, 'troubleshoot']);
         add_action('wp_ajax_git_manager_repo_reclone', [$this, 'reClone']);
         add_action('wp_ajax_git_manager_bulk_repo_status', [$this, 'getBulkRepoStatus']);
-
     }
 
     private function ensureAllowed(): void
