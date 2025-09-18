@@ -6766,19 +6766,27 @@ class GitManager {
     }
 
     validateAddRepositoryForm(form) {
-        const pathInput = form.querySelector('[name="path"]');
-        const remoteInput = form.querySelector('[name="remoteUrl"]');
-        const isExisting = form.querySelector('[name="is_existing"]').checked;
+        const pathInput = form.querySelector('[name="repo_path"]');
+        const remoteInput = form.querySelector('[name="repo_url"]');
+        const isExistingCheckbox = form.querySelector('[name="existing_repo"]');
 
-        if (!isExisting && !remoteInput.value.trim()) {
-            this.showNotification("Repository URL is required.", "error");
-            remoteInput.focus();
+        if (!isExistingCheckbox) {
+            console.error("Could not find the 'existing_repo' checkbox.");
             return false;
         }
+        const isExisting = isExistingCheckbox.checked;
 
-        if (!pathInput.value.trim()) {
+        if (!isExisting) {
+            if (!remoteInput || !remoteInput.value.trim()) {
+                this.showNotification("Repository URL is required.", "error");
+                remoteInput?.focus();
+                return false;
+            }
+        }
+
+        if (!pathInput || !pathInput.value.trim()) {
             this.showNotification("Local path is required.", "error");
-            pathInput.focus();
+            pathInput?.focus();
             return false;
         }
 
