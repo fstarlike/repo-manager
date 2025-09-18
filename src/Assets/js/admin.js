@@ -6837,6 +6837,11 @@ document.addEventListener("DOMContentLoaded", () => {
         if (typeof gitManagerAjax !== "undefined") {
             window.GitManager = new GitManager();
 
+            // Ensure skeleton helper is available globally for minified build
+            if (typeof window.gitManagerSkeleton === "undefined") {
+                window.gitManagerSkeleton = new GitManagerSkeleton();
+            }
+
             // Add safety wrapper for inline onclick handlers
             window.safeGitManagerCall = (method, ...args) => {
                 if (
@@ -6904,6 +6909,15 @@ document.addEventListener("DOMContentLoaded", () => {
                     window.GitManager.selectRepository(repoId);
                 } else {
                 }
+            };
+
+            // Helper to open troubleshooting for a specific repo id
+            window.troubleshootRepoFor = (repoId) => {
+                if (!window.GitManager) return;
+                if (repoId) {
+                    window.GitManager.currentRepo = repoId;
+                }
+                window.GitManager.troubleshootRepo();
             };
         } else {
         }
