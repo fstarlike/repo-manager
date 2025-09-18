@@ -828,9 +828,14 @@ class MultiRepoAjax
         $repo = $this->repositoryManager->add($repoData);
         $this->repositoryManager->setActive($repo->id);
 
+        $repoData               = $repo->toArray();
+        $repoData['exists']     = true;
+        $repoData['isReadable'] = is_readable($absolutePath);
+        $repoData['isValidGit'] = is_dir($absolutePath . '/.git');
+
         wp_send_json_success([
-            'message' => 'Existing repository added successfully',
-            'repo'    => $repo->toArray(),
+            'message'    => 'Repository added successfully',
+            'repository' => $repoData,
         ]);
     }
 

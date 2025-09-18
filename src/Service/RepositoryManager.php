@@ -181,19 +181,7 @@ class RepositoryManager
     /** Basic path security: ensure requested path stays inside ABSPATH unless user has manage_options */
     public function validatePath(string $path): bool
     {
-        $absolutePath = $path;
-
-        if (0 === strpos($path, '/wp-content') || 0 === strpos($path, '/wp-admin') || 0 === strpos($path, '/wp-includes')) {
-            $absolutePath = ABSPATH . ltrim($path, '/');
-
-        } elseif (! path_is_absolute($path)) {
-            $absolutePath = ABSPATH . $path;
-
-        } else {
-
-        }
-
-        $real = realpath($absolutePath);
+        $real = realpath($path);
 
         if ($real) {
             $real = rtrim($real, '\\/');
@@ -205,7 +193,7 @@ class RepositoryManager
 
             return 0 === strpos($real, $root);
         } else {
-            $parent = dirname($absolutePath);
+            $parent = dirname($path);
             $real   = realpath($parent);
 
             if (! $real) {

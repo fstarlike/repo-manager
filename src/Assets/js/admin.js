@@ -57,11 +57,12 @@ class GitManager {
         this.handleGlobalClick = this.handleGlobalClick.bind(this);
         this.handleGlobalKeydown = this.handleGlobalKeydown.bind(this);
         this.handleFormSubmit = this.handleFormSubmit.bind(this);
-        this.handleModalBackdropClick =
-            this.handleModalBackdropClick.bind(this);
+
         this.selectRepository = this.selectRepository.bind(this);
 
         // Initialize when DOM is ready; if already ready, run now
+        console.log(document.readyState);
+
         if (document.readyState === "loading") {
             document.addEventListener("DOMContentLoaded", () => this.init());
         } else {
@@ -80,7 +81,9 @@ class GitManager {
                     this._ajaxWaitAttempts++;
                     setTimeout(() => this.init(), 100);
                 } else {
-                    console.warn("GitManager: gitManagerAjax not found; initialization skipped after retries.");
+                    console.warn(
+                        "GitManager: gitManagerAjax not found; initialization skipped after retries."
+                    );
                 }
                 return;
             }
@@ -135,6 +138,8 @@ class GitManager {
                     );
                 }
             }, 50);
+            this.handleModalBackdropClick =
+                this.handleModalBackdropClick.bind(this);
         } catch (error) {}
     }
 
