@@ -53,13 +53,6 @@ class RepositoryManager
         $this->cache = [];
         $unique_paths = [];
 
-        $plugin_dir = plugin_dir_path( __FILE__ );
-        $wp_root = dirname( $plugin_dir, 2 );
-
-        echo '<pre>';
-        var_dump(ABSPATH, $wp_root);
-        echo '</pre>';
-        die;
         foreach ($stored as $item) {
             if (is_array($item)) {
                 $repo = new Repository($item);
@@ -68,6 +61,11 @@ class RepositoryManager
                     if (isset($unique_paths[$repo->path])) {
                         continue;
                     }
+
+                    echo '<pre>';
+        var_dump(ABSPATH, __DIR__, $repo->path, realpath($repo->path));
+        echo '</pre>';
+        die;
                     $this->cache[$repo->id] = $repo;
                     $unique_paths[$repo->path] = true;
                 }
