@@ -480,7 +480,7 @@ class MultiRepoAjax
         ];
 
         $repo = $this->repositoryManager->add($repoData);
-        $this->setActive($repo->id);
+        $this->repositoryManager->setActive($repo->id);
 
         wp_send_json_success([
             'message' => 'Repository added and cloned successfully',
@@ -492,45 +492,31 @@ class MultiRepoAjax
     {
         check_ajax_referer('git_manager_action', 'nonce');
 
-        $id = $this->getRepositoryId();
-
-        // Get the current repository to validate changes
-        $currentRepo = $this->repositoryManager->get($id);
-        if (!$currentRepo instanceof Repository) {
-            wp_send_json_error('Repository not found');
+        $id = sanitize_text_field(wp_unslash($_POST['id'] ?? ''));
+        if (!$id) {
+            wp_send_json_error('Repository ID is required');
         }
 
-        // Get new data from POST
-        $name       = sanitize_text_field(wp_unslash($_POST['name'] ?? ''));
-        $remoteUrl  = sanitize_text_field(wp_unslash($_POST['remoteUrl'] ?? ''));
-        $authType   = sanitize_text_field(wp_unslash($_POST['authType'] ?? ''));
-        $username   = sanitize_text_field(wp_unslash($_POST['username'] ?? ''));
-        $token      = sanitize_text_field(wp_unslash($_POST['token'] ?? ''));
-        $privateKey = empty($_POST['private_key']) ? '' : sanitize_textarea_field(wp_unslash($_POST['private_key']));
-        $autoDeploy = wp_validate_boolean(wp_unslash($_POST['autoDeploy'] ?? false));
-        $webhook    = sanitize_text_field(wp_unslash($_POST['webhook'] ?? ''));
-
-        // Update repository details
-        $repo = $this->repositoryManager->update($id, [
-            'name'       => $name,
-            'remoteUrl'  => $remoteUrl,
-            'autoDeploy' => $autoDeploy,
-            'webhook'    => $webhook,
-        ]);
-        if (! $repo instanceof Repository) {
-            wp_send_json_error('Failed to update repository.');
+        $data = [];
+        if (isset($_POST['name'])) {
+            $data['name'] = sanitize_text_field(wp_unslash($_POST['name']));
+        }
+        if (isset($_POST['path'])) {
+            $data['path'] = sanitize_text_field(wp_unslash($_POST['path']));
+        }
+        if (isset($_POST['remoteUrl'])) {
+            $data['remoteUrl'] = sanitize_text_field(wp_unslash($_POST['remoteUrl']));
         }
 
-        // Update credentials
-        $cred = [
-            'authType' => $authType,
-            'username' => $username,
-            'token'    => $token,
-        ];
-        if ($privateKey) {
-            $cred['private_key'] = $privateKey;
+        if (empty($data)) {
+            wp_send_json_error('No data provided to update');
         }
-        CredentialStore::set($repo->id, $cred);
+
+        $repo = $this->repositoryManager->update($id, $data);
+
+        if (!$repo) {
+            wp_send_json_error('Failed to update repository or repository not found');
+        }
 
         wp_send_json_success($repo->toArray());
     }
@@ -781,7 +767,7 @@ class MultiRepoAjax
         ];
 
         $repo = $this->repositoryManager->add($repoData);
-        $this->setActive($repo->id);
+        $this->repositoryManager->setActive($repo->id);
 
         wp_send_json_success([
             'message' => 'Existing repository added successfully',
