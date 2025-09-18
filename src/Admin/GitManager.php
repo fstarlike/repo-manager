@@ -1454,25 +1454,26 @@ class GitManager
                 throw new \Exception('Repository not found');
             }
 
-            // Check if repository directory exists
-            if (!is_dir($repository->path)) {
-                throw new \Exception('Repository directory does not exist: ' . $repository->path);
+            // Resolve path and validate
+            $resolvedPath = \WPGitManager\Service\RepositoryManager::instance()->resolvePath($repository->path);
+            if (!is_dir($resolvedPath)) {
+                throw new \Exception('Repository directory does not exist: ' . $repository->path . ' (resolved to ' . $resolvedPath . ')');
             }
 
             // Check if this is a Git repository (supports worktrees)
-            if (!\WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($repository->path)) {
+            if (!\WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($resolvedPath)) {
                 throw new \Exception('Not a valid Git repository: .git directory not found');
             }
 
             // Ensure we have the latest remote state (throttled)
             $throttleKey = 'git_manager_last_fetch_' . $repoId;
             if (false === get_transient($throttleKey)) {
-                SecureGitRunner::run($repository->path, 'fetch --all --prune', ['low_priority' => true]);
+                SecureGitRunner::run($resolvedPath, 'fetch --all --prune', ['low_priority' => true]);
                 set_transient($throttleKey, time(), 60);
             }
 
             // Get branch information
-            $branchResult  = SecureGitRunner::run($repository->path, 'rev-parse --abbrev-ref HEAD');
+            $branchResult  = SecureGitRunner::run($resolvedPath, 'rev-parse --abbrev-ref HEAD');
             $currentBranch = trim($branchResult['output'] ?? '');
 
             if (!$branchResult['success'] || ('' === $currentBranch || '0' === $currentBranch)) {
@@ -1480,7 +1481,7 @@ class GitManager
             }
 
             // Get detailed status with branch information
-            $statusResult = SecureGitRunner::run($repository->path, 'status --porcelain --branch');
+            $statusResult = SecureGitRunner::run($resolvedPath, 'status --porcelain --branch');
 
             if (!$statusResult['success']) {
                 throw new \Exception('Failed to get repository status');

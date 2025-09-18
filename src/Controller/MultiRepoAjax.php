@@ -1744,17 +1744,18 @@ class MultiRepoAjax
             wp_send_json_error('Repository not found');
         }
 
-        $localResult = GitCommandRunner::run($repo->path, 'branch');
+        $resolvedPath = $this->repositoryManager->resolvePath($repo->path);
+        $localResult = GitCommandRunner::run($resolvedPath, 'branch');
         if (!$localResult['success']) {
             wp_send_json_error('Failed to get local branches');
         }
 
-        $remoteResult = GitCommandRunner::run($repo->path, 'branch -r');
+        $remoteResult = GitCommandRunner::run($resolvedPath, 'branch -r');
         if (!$remoteResult['success']) {
             wp_send_json_error('Failed to get remote branches');
         }
 
-        $activeBranchResult = GitCommandRunner::run($repo->path, 'rev-parse --abbrev-ref HEAD');
+        $activeBranchResult = GitCommandRunner::run($resolvedPath, 'rev-parse --abbrev-ref HEAD');
         $activeBranch       = $activeBranchResult['success'] ? trim($activeBranchResult['output']) : '';
 
         $localBranches = array_values(array_filter(array_map(function ($b) {
@@ -1844,23 +1845,24 @@ class MultiRepoAjax
         }
 
         // Check if repository path exists and is a git repository
-        if (!is_dir($repo->path)) {
+        $resolvedPath = $this->repositoryManager->resolvePath($repo->path);
+        if (!is_dir($resolvedPath)) {
             wp_send_json_error('Repository path does not exist');
         }
 
-        if (! \WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($repo->path)) {
+        if (! \WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($resolvedPath)) {
             wp_send_json_error('Not a git repository');
         }
 
         // Get current branch efficiently
-        $currentBranch = $this->getCurrentBranch($repo->path);
+        $currentBranch = $this->getCurrentBranch($resolvedPath);
         if ('' === $currentBranch || '0' === $currentBranch) {
             wp_send_json_success([]);
             return;
         }
 
         // Use optimized git command with timeout handling
-        $commits = $this->fetchCommitsOptimized($repo->path, $limit);
+        $commits = $this->fetchCommitsOptimized($resolvedPath, $limit);
 
         if (false === $commits) {
             wp_send_json_error('Failed to fetch commits');
@@ -2080,7 +2082,8 @@ class MultiRepoAjax
             wp_send_json_error('Repository not found');
         }
 
-        $result     = GitCommandRunner::run($repo->path, 'status --porcelain');
+        $resolvedPath = $this->repositoryManager->resolvePath($repo->path);
+        $result     = GitCommandRunner::run($resolvedPath, 'status --porcelain');
         $hasChanges = !in_array(trim($result['output'] ?? ''), ['', '0'], true);
 
         wp_send_json_success(['hasChanges' => $hasChanges]);
@@ -3064,7 +3067,8 @@ class MultiRepoAjax
             }
 
             // Check if repository directory exists using is_dir which respects symlinks
-            if (!is_dir($repo->path)) {
+            $resolvedPath = $this->repositoryManager->resolvePath($repo->path);
+            if (!is_dir($resolvedPath)) {
                 $results[$repo->id] = [
                     'status'        => null,
                     'status_error'  => 'Repository directory does not exist: ' . $repo->path,
@@ -3080,7 +3084,7 @@ class MultiRepoAjax
             }
 
             // Check if .git directory exists
-            if (! \WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($repo->path)) {
+            if (! \WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($resolvedPath)) {
                 $results[$repo->id] = [
                     'status'        => null,
                     'status_error'  => 'Not a valid Git repository: .git directory not found',
@@ -3105,7 +3109,7 @@ class MultiRepoAjax
             // }
 
             // Get branch information
-            $branchResult  = SecureGitRunner::runInDirectory($repo->path, 'rev-parse --abbrev-ref HEAD');
+            $branchResult  = SecureGitRunner::runInDirectory($resolvedPath, 'rev-parse --abbrev-ref HEAD');
             $currentBranch = trim($branchResult['output'] ?? '');
 
             if (!$branchResult['success'] || ('' === $currentBranch || '0' === $currentBranch)) {
@@ -3124,8 +3128,8 @@ class MultiRepoAjax
             }
 
             // Get detailed status with branch information
-            $statusResult = SecureGitRunner::runInDirectory($repo->path, 'status --porcelain --branch');
-            $commitResult = SecureGitRunner::runInDirectory($repo->path, 'log -1 --pretty=format:%h|%s|%an|%ar');
+            $statusResult = SecureGitRunner::runInDirectory($resolvedPath, 'status --porcelain --branch');
+            $commitResult = SecureGitRunner::runInDirectory($resolvedPath, 'log -1 --pretty=format:%h|%s|%an|%ar');
 
             if (!$statusResult['success']) {
                 $errorMessage = 'Failed to get repository status';
