@@ -62,10 +62,6 @@ class RepositoryManager
                         continue;
                     }
 
-                    echo '<pre>';
-        var_dump(ABSPATH, __DIR__, $repo->path, realpath($repo->path));
-        echo '</pre>';
-        die;
                     $this->cache[$repo->id] = $repo;
                     $unique_paths[$repo->path] = true;
                 }

@@ -25,6 +25,8 @@ class Repository
 
     public ?string $activeBranch = null;
 
+    public array $debug_info = [];
+
     public function __construct(array $data)
     {
         $this->id        = $data['id'] ?? wp_generate_uuid4();
@@ -75,6 +77,7 @@ class Repository
             'authType'     => $this->authType,
             'meta'         => $this->meta,
             'activeBranch' => $this->activeBranch,
+            'debug_info'   => $this->debug_info,
         ];
     }
 }

@@ -144,22 +144,46 @@ class MultiRepoAjax
         }
 
         $repos = $this->repositoryManager->all();
-        foreach ( $repos as $repo ) {
-            if ( is_dir( $repo->path ) && SecureGitRunner::isGitRepositoryPath( $repo->path ) ) {
-                $branchResult       = SecureGitRunner::runInDirectory( $repo->path, 'rev-parse --abbrev-ref HEAD' );
-                $repo->activeBranch = $branchResult['success'] ? trim( $branchResult['output'] ) : null;
+        foreach ($repos as $repo) {
+            $repo->debug_info             = [];
+            $repo->debug_info['storedPath'] = $repo->path;
 
-                if ( empty( $repo->activeBranch ) || '0' === $repo->activeBranch ) {
-                    $headFile = rtrim( $repo->path, '\/' ) . '/.git/HEAD';
-                    if ( is_file( $headFile ) && is_readable( $headFile ) ) {
-                        $head = @file_get_contents( $headFile );
-                        if ( false !== $head ) {
-                            $head = trim( (string) $head );
-                            if ( 0 === strpos( $head, 'ref: ' ) ) {
-                                $ref  = trim( substr( $head, 5 ) );
-                                $base = 'refs/heads/';
-                                $repo->activeBranch = ( 0 === strpos( $ref, $base ) ) ? substr( $ref, strlen( $base ) ) : $ref;
-                            }
+            if (! is_dir($repo->path)) {
+                $repo->debug_info['is_dir_check']      = 'failed';
+                $repo->debug_info['is_readable_check'] = is_readable($repo->path) ? 'passed' : 'failed';
+                $repo->activeBranch                  = null;
+                continue;
+            }
+            $repo->debug_info['is_dir_check'] = 'passed';
+
+            if (! SecureGitRunner::isGitRepositoryPath($repo->path)) {
+                $repo->debug_info['is_git_repo_check'] = 'failed';
+                $repo->activeBranch                  = null;
+                continue;
+            }
+            $repo->debug_info['is_git_repo_check'] = 'passed';
+
+            $branchResult       = SecureGitRunner::runInDirectory($repo->path, 'rev-parse --abbrev-ref HEAD');
+            $repo->activeBranch = $branchResult['success'] ? trim($branchResult['output']) : null;
+            $repo->debug_info['git_command_success'] = $branchResult['success'];
+            $repo->debug_info['git_command_output'] = $branchResult['output'] ?? 'empty';
+
+
+            if (empty($repo->activeBranch) || '0' === $repo->activeBranch) {
+                $headFile = rtrim($repo->path, '\/') . '/.git/HEAD';
+                $repo->debug_info['head_file_path']    = $headFile;
+                $repo->debug_info['head_file_exists']  = file_exists($headFile);
+                $repo->debug_info['head_file_readable'] = is_readable($headFile);
+
+                if (is_file($headFile) && is_readable($headFile)) {
+                    $head = @file_get_contents($headFile);
+                    if (false !== $head) {
+                        $head                               = trim((string) $head);
+                        $repo->debug_info['head_content'] = $head;
+                        if (0 === strpos($head, 'ref: ')) {
+                            $ref                  = trim(substr($head, 5));
+                            $base                 = 'refs/heads/';
+                            $repo->activeBranch = (0 === strpos($ref, $base)) ? substr($ref, strlen($base)) : $ref;
                         }
                     }
                 }
