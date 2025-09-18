@@ -1862,7 +1862,7 @@ class MultiRepoAjax
         }
 
         // Use optimized git command with timeout handling
-        $commits = $this->fetchCommitsOptimized($resolvedPath, $limit);
+        $commits = $this->fetchCommitsOptimized($resolvedPath, $limit, $currentBranch);
 
         if (false === $commits) {
             wp_send_json_error('Failed to fetch commits');
@@ -1924,25 +1924,27 @@ class MultiRepoAjax
     /**
      * Fetch commits with optimized approach and fallbacks
      */
-    private function fetchCommitsOptimized(string $repoPath, int $limit)
+    private function fetchCommitsOptimized(string $repoPath, int $limit, string $branch)
     {
+        $safeBranch = escapeshellarg($branch);
+
         // Use optimized format with minimal data for better performance
         $separator = '###';
         $format    = implode($separator, ['%h', '%an', '%ae', '%cr', '%s']);
 
         // Try the most efficient command first
-        $command = sprintf('log --pretty=format:"%s" -n %d --no-merges', $format, $limit);
+        $command = sprintf('log %s --pretty=format:"%s" -n %d --no-merges', $safeBranch, $format, $limit);
         $result  = GitCommandRunner::run($repoPath, $command);
 
         if (!$result['success']) {
             // Fallback 1: Try without --no-merges
-            $fallbackCommand = sprintf('log --pretty=format:"%s" -n %d', $format, $limit);
+            $fallbackCommand = sprintf('log %s --pretty=format:"%s" -n %d', $safeBranch, $format, $limit);
             $result          = GitCommandRunner::run($repoPath, $fallbackCommand);
         }
 
         if (!$result['success']) {
             // Fallback 2: Try simple oneline format
-            $simpleCommand = sprintf('log --oneline -n %d', $limit);
+            $simpleCommand = sprintf('log %s --oneline -n %d', $safeBranch, $limit);
             $result        = GitCommandRunner::run($repoPath, $simpleCommand);
 
             if (!$result['success']) {
