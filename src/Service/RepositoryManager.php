@@ -150,6 +150,36 @@ class RepositoryManager
         return true;
     }
 
+    /**
+     * Resolve a potentially relative path to a full, canonical path.
+     *
+     * @param string $path The path to resolve.
+     * @return string The resolved absolute path.
+     */
+    public function resolvePath(string $path): string
+    {
+        // Trim whitespace and quotes
+        $path = trim($path, " \t\n\r\0\x0B\"'");
+
+        // If path is already a valid absolute path, return it after normalization
+        if (path_is_absolute($path) && is_dir($path)) {
+            return wp_normalize_path(realpath($path));
+        }
+
+        // Always resolve relative to WordPress root. ABSPATH is defined without a trailing slash.
+        $resolvedPath = ABSPATH . ltrim($path, '/\\');
+
+        // Normalize for the current OS and resolve '..' '.'' etc.
+        $realPathResult = realpath($resolvedPath);
+
+        if ($realPathResult) {
+            return wp_normalize_path($realPathResult);
+        }
+
+        // If realpath fails (e.g., path doesn't exist yet), return the normalized absolute path.
+        return wp_normalize_path($resolvedPath);
+    }
+
     /** Basic path security: ensure requested path stays inside ABSPATH unless user has manage_options */
     public function validatePath(string $path): bool
     {

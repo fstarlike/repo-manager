@@ -11,13 +11,15 @@ use WPGitManager\Service\RateLimiter;
 use WPGitManager\Service\RepositoryManager;
 use WPGitManager\Service\SecureGitRunner;
 use WPGitManager\Service\SystemStatus;
+use WPGitManager\Service\Configuration;
 
 if (! defined('ABSPATH')) {
     exit;
 }
 
 /**
- * AJAX endpoints for multi-repository management
+ * Main AJAX controller for multi-repository UI
+ * Handles most Git operations and data retrieval
  */
 class MultiRepoAjax
 {
@@ -248,7 +250,7 @@ class MultiRepoAjax
         }
 
         // Check if repository directory exists with improved path resolution
-        $resolvedPath = $this->resolveRepositoryPath($repo->path);
+        $resolvedPath = $this->repositoryManager->resolvePath($repo->path);
         $directoryExists    = is_dir($resolvedPath);
         $gitDirectoryExists = is_dir($resolvedPath . '/.git');
 
@@ -3213,7 +3215,7 @@ class MultiRepoAjax
             }
 
             // Check if repository directory exists with improved path resolution
-            $resolvedPath = $this->resolveRepositoryPath($repo->path);
+            $resolvedPath = $this->repositoryManager->resolvePath($repo->path);
             if (!is_dir($resolvedPath)) {
                 $results[$repo->id] = [
                     'status'        => null,

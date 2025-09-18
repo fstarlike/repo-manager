@@ -6618,49 +6618,43 @@ class GitManager {
      * Handle manage path form submission
      */
     async handleManagePathSubmit(repo) {
-        const newPath = document.getElementById("repo-path-input").value.trim();
-
-        // Get action type from switches
-        const recloneSwitch = document.getElementById("reclone-repo");
-        const actionType =
-            recloneSwitch && recloneSwitch.checked ? "reclone" : "update_path";
-
-        // Safely get branch value with proper null checks
-        const branchElement = document.getElementById("repo-branch");
-        const branch =
-            branchElement && branchElement.value
-                ? branchElement.value.trim()
-                : "main";
-
-        // Safely get delete old checkbox value
-        const deleteOldElement = document.getElementById("delete-old-entry");
-        const deleteOld = deleteOldElement ? deleteOldElement.checked : false;
-
-        if (!newPath) {
-            this.showNotification(
-                WPGitManagerGlobal.translations.repositoryPathRequired,
-                "error"
-            );
-            return;
-        }
-
-        if (!actionType) {
-            this.showNotification(
-                WPGitManagerGlobal.translations.pleaseSelectActionType,
-                "error"
-            );
-            return;
-        }
-
-        this.showProgress(
-            actionType === "reclone"
-                ? "Re-cloning repository..."
-                : "Updating repository path..."
-        );
+        const modal = document.querySelector(".git-manage-path-modal");
+        const saveButton = modal
+            ? modal.querySelector('button[type="submit"]')
+            : null;
+        this.setButtonLoadingState(saveButton, true);
 
         try {
+            const newPath = document
+                .getElementById("repo-path-input")
+                .value.trim();
+            const recloneSwitch = document.getElementById("reclone-repo");
+            const actionType =
+                recloneSwitch && recloneSwitch.checked
+                    ? "reclone"
+                    : "update_path";
+            const branchElement = document.getElementById("repo-branch");
+            const branch =
+                branchElement && branchElement.value
+                    ? branchElement.value.trim()
+                    : "main";
+            const deleteOldElement =
+                document.getElementById("delete-old-entry");
+            const deleteOld = deleteOldElement
+                ? deleteOldElement.checked
+                : false;
+
+            if (!newPath) {
+                this.showNotification(
+                    WPGitManagerGlobal.translations.repositoryPathRequired,
+                    "error"
+                );
+                // I must return here otherwise the finally block will execute and remove the loading indicator before the user can see the error.
+                this.setButtonLoadingState(saveButton, false);
+                return;
+            }
+
             if (actionType === "update_path") {
-                // Update path only
                 const response = await this.apiCall("git_manager_repo_update", {
                     id: repo.id,
                     name: repo.name,
@@ -6668,74 +6662,37 @@ class GitManager {
                     remoteUrl: repo.remoteUrl,
                     authType: repo.authType,
                 });
-
                 if (response.success) {
                     this.showNotification(
                         `Repository path updated successfully to: ${newPath}`,
                         "success"
                     );
-
-                    // Close modal and refresh list
                     this.closeModal("manage-path");
-                    this.refreshRepositoryList();
-
-                    // Select the updated repository
-                    setTimeout(() => {
-                        this.selectRepository(repo.id);
-                    }, 1000);
+                    this.refreshRepositoriesSilently();
+                    await this.verifyRepositoryExists(repo.id);
                 } else {
-                    this.showNotification(
-                        "Failed to update repository path: " +
-                            (response.data ||
-                                WPGitManagerGlobal.translations.unknownError),
-                        "error"
-                    );
+                    throw new Error(response.data || "Failed to update path");
                 }
-            } else if (actionType === "reclone") {
-                // Re-clone repository
-                const addResponse = await this.apiCall(
-                    "git_manager_add_repository",
+            } else {
+                const response = await this.apiCall(
+                    "git_manager_reclone_repo",
                     {
-                        name: repo.name,
-                        path: newPath,
-                        remoteUrl: repo.remoteUrl,
-                        repo_branch: branch,
-                        authType: repo.authType,
-                        username: repo.username,
-                        existing_repo: false,
+                        id: repo.id,
+                        new_path: newPath,
+                        branch: branch,
+                        delete_old: deleteOld,
                     }
                 );
-
-                if (addResponse.success) {
-                    const newRepoId = addResponse.data.id;
-
-                    // If delete old is checked, delete the old repository
-                    if (deleteOld) {
-                        await this.apiCall("git_manager_repo_delete", {
-                            id: repo.id,
-                            delete_files: false,
-                        });
-                    }
-
+                if (response.success) {
                     this.showNotification(
-                        `Repository "${repo.name}" successfully re-cloned to new path: ${newPath}`,
+                        "Repository re-cloned successfully.",
                         "success"
                     );
-
-                    // Close modal and refresh list
                     this.closeModal("manage-path");
-                    this.refreshRepositoryList();
-
-                    // Select the new repository
-                    setTimeout(() => {
-                        this.selectRepository(newRepoId);
-                    }, 1000);
+                    this.loadRepositories();
                 } else {
-                    this.showNotification(
-                        "Failed to re-clone repository: " +
-                            (addResponse.data ||
-                                WPGitManagerGlobal.translations.unknownError),
-                        "error"
+                    throw new Error(
+                        response.data || "Failed to re-clone repository"
                     );
                 }
             }
@@ -6744,138 +6701,14 @@ class GitManager {
                 "Error managing repository path: " + error.message,
                 "error"
             );
+        } finally {
+            this.setButtonLoadingState(saveButton, false);
         }
-
-        this.hideProgress();
     }
 
     /**
-     * Update repository card in the list
+     * Rename repository (from settings tab)
      */
-    updateRepoCard(repo) {
-        const card = document.querySelector(
-            `.git-repo-card[data-repo-id="${repo.id}"]`
-        );
-        if (!card) return;
-
-        const statusElement = card.querySelector(".repo-status");
-        if (!statusElement) return;
-
-        const ahead = parseInt(repo.ahead || 0, 10);
-        const behind = parseInt(repo.behind || 0, 10);
-        let statusClass = "clean";
-
-        // Use same status logic as overview tab and createRepoCardHTML
-        if (repo.hasChanges) {
-            statusClass = "changes";
-        } else if (ahead > 0 && behind > 0) {
-            statusClass = "diverged";
-        } else if (ahead > 0) {
-            statusClass = "ahead";
-        } else if (behind > 0) {
-            statusClass = "behind";
-        }
-
-        statusElement.className = `repo-status ${statusClass}`;
-        statusElement.setAttribute("data-repo-status", statusClass);
-
-        // Keep only the status dot, remove any text that might have been added
-        const statusDot = statusElement.querySelector(".status-dot");
-        if (statusDot) {
-            statusElement.innerHTML = `<span class="status-dot"></span>`;
-        }
-
-        // Update repository type badge if it exists
-        const badgeElement = card.querySelector(".repo-type-badge");
-        if (badgeElement && repo.repoType) {
-            const badgeText =
-                repo.repoType === "plugin"
-                    ? "#Plugin"
-                    : repo.repoType === "theme"
-                    ? "#Theme"
-                    : "#Other";
-            badgeElement.className = `repo-hashtag ${repo.repoType}`;
-            badgeElement.textContent = badgeText;
-        }
-    }
-
-    setupUrlAutoFill() {
-        const urlInput = document.getElementById("add-repo-url");
-        if (!urlInput) return;
-
-        urlInput.addEventListener("input", (e) => {
-            clearTimeout(this.urlAutofillTimer);
-            this.urlAutofillTimer = setTimeout(
-                () => this.parseAndFillRepoUrl(e.target.value),
-                300
-            );
-        });
-    }
-
-    /**
-     * Parse Git URL and auto-fill path/branch
-     */
-    parseAndFillRepoUrl(url) {
-        if (!url || url.trim() === "") {
-            return;
-        }
-
-        const patterns = [
-            // HTTPS
-            /^(?:https?:\/\/)(?:[^\/]+@)?([^\/]+)\/([^\/]+)\/([^\/]+)(?:\.git)?$/,
-            // SSH
-            /^(?:git@)([^:]+):([^\/]+)\/([^\/]+)(?:\.git)?$/,
-        ];
-
-        let matches = null;
-        for (const pattern of patterns) {
-            matches = url.match(pattern);
-            if (matches) break;
-        }
-
-        if (matches) {
-            let pathPopulated = false;
-            let branchPopulated = false;
-
-            const repoName = matches[3].replace(/\.git$/, "");
-            const pathInput = document.getElementById("add-repo-path");
-            const branchInput = document.getElementById("add-repo-branch");
-            const nameInput = document.getElementById("add-repo-name");
-
-            if (
-                pathInput &&
-                (!pathInput.value || pathInput.value.trim() === "")
-            ) {
-                const defaultPath = `wp-content/plugins/${repoName}`;
-                pathInput.value = defaultPath;
-                pathPopulated = true;
-            }
-
-            if (
-                nameInput &&
-                (!nameInput.value || nameInput.value.trim() === "")
-            ) {
-                nameInput.value = repoName;
-            }
-
-            if (
-                branchInput &&
-                (!branchInput.value || branchInput.value.trim() === "")
-            ) {
-                branchInput.value = "main";
-                branchPopulated = true;
-            }
-
-            if (pathPopulated || branchPopulated) {
-                this.showNotification(
-                    `Auto-filled: Path: ${pathInput.value}, Branch: ${branchInput.value}`,
-                    "info",
-                    3000
-                );
-            }
-        }
-    }
-
     async renameRepository(repoId, newName) {
         if (!repoId) return;
 

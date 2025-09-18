@@ -424,10 +424,13 @@ class RepositoryController
         }
 
         if (isset($data['path'])) {
-            $validated['path'] = sanitize_text_field(wp_unslash($data['path']));
-            if (empty($validated['path'])) {
+            $rawPath = sanitize_text_field(wp_unslash($data['path']));
+            if (empty($rawPath)) {
                 throw new \Exception('Repository path is required');
             }
+
+            // Resolve the path to an absolute path before validation and saving.
+            $validated['path'] = $this->repositoryManager->resolvePath($rawPath);
 
             if (!$this->repositoryManager->validatePath($validated['path'])) {
                 throw new \Exception('Invalid repository path');
