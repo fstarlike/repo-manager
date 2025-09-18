@@ -52,6 +52,7 @@ class GitManager {
         this.urlAutofillTimer = null; // Debounce timer for URL autofill
         this.init();
 
+        this.handleGlobalClick = this.handleGlobalClick.bind(this);
         this.handleGlobalKeydown = this.handleGlobalKeydown.bind(this);
         this.handleFormSubmit = this.handleFormSubmit.bind(this);
         this.handleModalBackdropClick =
