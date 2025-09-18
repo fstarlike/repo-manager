@@ -53,8 +53,11 @@ class RepositoryManager
         $this->cache = [];
         $unique_paths = [];
 
+        $plugin_dir = plugin_dir_path( __FILE__ );
+        $wp_root = dirname( $plugin_dir, 2 );
+
         echo '<pre>';
-        var_dump(ABSPATH);
+        var_dump(ABSPATH, $wp_root);
         echo '</pre>';
         die;
         foreach ($stored as $item) {
