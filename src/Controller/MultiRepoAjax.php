@@ -164,6 +164,8 @@ class MultiRepoAjax
             wp_send_json_error('Repository not found');
         }
 
+        $resolvedPath = $this->resolveRepositoryPath($repo->path);
+
         // Cache-first
         $cacheKey = 'git_manager_cache_repo_details_' . $id;
         $cached   = get_transient($cacheKey);

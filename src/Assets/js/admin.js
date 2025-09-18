@@ -4325,7 +4325,36 @@ class GitManager {
         return notification;
     }
 
+    setButtonLoadingState(button, isLoading) {
+        if (!button) return;
+
+        if (isLoading) {
+            button.disabled = true;
+            const originalContent = button.innerHTML;
+            button.setAttribute("data-original-content", originalContent);
+            button.innerHTML = `
+                <span class="button-loading-spinner"></span>
+            `;
+            button.style.width = button.offsetWidth + "px";
+            button.style.height = button.offsetHeight + "px";
+        } else {
+            button.disabled = false;
+            const originalContent = button.getAttribute(
+                "data-original-content"
+            );
+            if (originalContent) {
+                button.innerHTML = originalContent;
+                button.removeAttribute("data-original-content");
+            }
+            button.style.width = "";
+            button.style.height = "";
+        }
+    }
+
     escapeHtml(text) {
+        if (typeof text !== "string") {
+            return "";
+        }
         const div = document.createElement("div");
         div.textContent = text;
         return div.innerHTML;
@@ -6313,6 +6342,10 @@ class GitManager {
      * Manage repository path (unified solution for both re-cloning and fixing path)
      */
     async manageRepositoryPath(repoId) {
+        const button = document.querySelector(
+            `[data-repo-id="${repoId}"] .repo-action-btn[data-action="manage-path"]`
+        );
+        this.setButtonLoadingState(button, true);
         try {
             // Get repository details first
             const response = await this.apiCall(
@@ -6343,6 +6376,8 @@ class GitManager {
                 "Error getting repository details: " + error.message,
                 "error"
             );
+        } finally {
+            this.setButtonLoadingState(button, false);
         }
     }
 

@@ -9284,3 +9284,20 @@ span#repo-name {
 .notice {
     display: none !important;
 }
+
+.button-loading-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(128, 128, 128, 0.3);
+    border-radius: 50%;
+    border-top-color: var(--gm-primary-text);
+    animation: spin 1s ease-in-out infinite;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
