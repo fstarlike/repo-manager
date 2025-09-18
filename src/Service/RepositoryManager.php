@@ -161,9 +161,14 @@ class RepositoryManager
         // Trim whitespace and quotes
         $path = trim($path, " \t\n\r\0\x0B\"'");
 
-        // If path is already a valid absolute path, return it after normalization
-        if (path_is_absolute($path) && is_dir($path)) {
-            return wp_normalize_path(realpath($path));
+        // If path is already an absolute path, normalize it
+        if (path_is_absolute($path)) {
+            $realPathResult = realpath($path);
+            if ($realPathResult) {
+                return wp_normalize_path($realPathResult);
+            }
+            // If realpath fails, return the normalized path as is.
+            return wp_normalize_path($path);
         }
 
         // Always resolve relative to WordPress root. ABSPATH is defined without a trailing slash.
