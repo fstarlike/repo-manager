@@ -51,11 +51,18 @@ class RepositoryManager
         }
 
         $this->cache = [];
+        $unique_paths = [];
+
         foreach ($stored as $item) {
             if (is_array($item)) {
                 $repo = new Repository($item);
                 if ('' !== $repo->path && '0' !== $repo->path) {
+                    // Prevent adding duplicates based on path
+                    if (isset($unique_paths[$repo->path])) {
+                        continue;
+                    }
                     $this->cache[$repo->id] = $repo;
+                    $unique_paths[$repo->path] = true;
                 }
             }
         }
@@ -158,31 +165,16 @@ class RepositoryManager
      */
     public function resolvePath(string $path): string
     {
-        // Trim whitespace and quotes
-        $path = trim($path, " \t\n\r\0\x0B\"'");
+        // Trim whitespace and quotes, then normalize slashes
+        $path = wp_normalize_path(trim($path, " \t\n\r\0\x0B\"'"));
 
-        // If path is already an absolute path, normalize it
+        // If path is already an absolute path, just return it
         if (path_is_absolute($path)) {
-            $realPathResult = realpath($path);
-            if ($realPathResult) {
-                return wp_normalize_path($realPathResult);
-            }
-            // If realpath fails, return the normalized path as is.
-            return wp_normalize_path($path);
+            return $path;
         }
 
-        // Always resolve relative to WordPress root. ABSPATH is defined without a trailing slash.
-        $resolvedPath = ABSPATH . ltrim($path, '/\\');
-
-        // Normalize for the current OS and resolve '..' '.'' etc.
-        $realPathResult = realpath($resolvedPath);
-
-        if ($realPathResult) {
-            return wp_normalize_path($realPathResult);
-        }
-
-        // If realpath fails (e.g., path doesn't exist yet), return the normalized absolute path.
-        return wp_normalize_path($resolvedPath);
+        // It's a relative path, so resolve it relative to the WordPress root
+        return wp_normalize_path(ABSPATH . ltrim($path, '/'));
     }
 
     /** Basic path security: ensure requested path stays inside ABSPATH unless user has manage_options */
