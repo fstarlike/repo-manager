@@ -526,22 +526,25 @@ class MultiRepoAjax
         check_ajax_referer('git_manager_action', 'nonce');
 
         $id = $this->getRepositoryId();
+        if (!$id) {
+            wp_send_json_error('Repository ID is required');
+        }
 
         $repo = $this->repositoryManager->get($id);
-
-        if (!$repo instanceof Repository) {
+        if (!$repo) {
             wp_send_json_error('Repository not found');
         }
 
-        $repo_name = $repo->name;
+        // We will no longer delete files from disk.
+        // The repository is only removed from the manager.
 
-        // Delete from RepositoryManager
-        if (! $this->repositoryManager->delete($id)) {
-            wp_send_json_error('Failed to remove repository from manager');
+        $deleted = $this->repositoryManager->delete($id);
+
+        if (!$deleted) {
+            wp_send_json_error('Failed to delete repository');
         }
 
-        // Always keep repository files on disk; only remove from Repo Manager
-        wp_send_json_success(sprintf('Repository "%s" has been removed from Repo Manager successfully', $repo_name));
+        wp_send_json_success('Repository removed from manager');
     }
 
     /**
@@ -3000,9 +3003,8 @@ class MultiRepoAjax
                 continue;
             }
 
-            // Check if repository directory exists with improved path resolution
-            $resolvedPath = $this->repositoryManager->resolvePath($repo->path);
-            if (!is_dir($resolvedPath)) {
+            // Check if repository directory exists using is_dir which respects symlinks
+            if (!is_dir($repo->path)) {
                 $results[$repo->id] = [
                     'status'        => null,
                     'status_error'  => 'Repository directory does not exist: ' . $repo->path,
@@ -3012,12 +3014,13 @@ class MultiRepoAjax
                     'ahead'         => 0,
                     'hasChanges'    => false,
                     'currentBranch' => null,
+                    'folderExists'  => false,
                 ];
                 continue;
             }
 
             // Check if .git directory exists
-            if (! \WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($resolvedPath)) {
+            if (! \WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($repo->path)) {
                 $results[$repo->id] = [
                     'status'        => null,
                     'status_error'  => 'Not a valid Git repository: .git directory not found',
@@ -3027,6 +3030,7 @@ class MultiRepoAjax
                     'ahead'         => 0,
                     'hasChanges'    => false,
                     'currentBranch' => null,
+                    'folderExists'  => true,
                 ];
                 continue;
             }
@@ -3041,7 +3045,7 @@ class MultiRepoAjax
             // }
 
             // Get branch information
-            $branchResult  = SecureGitRunner::runInDirectory($resolvedPath, 'rev-parse --abbrev-ref HEAD');
+            $branchResult  = SecureGitRunner::runInDirectory($repo->path, 'rev-parse --abbrev-ref HEAD');
             $currentBranch = trim($branchResult['output'] ?? '');
 
             if (!$branchResult['success'] || ('' === $currentBranch || '0' === $currentBranch)) {
@@ -3054,13 +3058,14 @@ class MultiRepoAjax
                     'ahead'         => 0,
                     'hasChanges'    => false,
                     'currentBranch' => null,
+                    'folderExists'  => true,
                 ];
                 continue;
             }
 
             // Get detailed status with branch information
-            $statusResult = SecureGitRunner::runInDirectory($resolvedPath, 'status --porcelain --branch');
-            $commitResult = SecureGitRunner::runInDirectory($resolvedPath, 'log -1 --pretty=format:%h|%s|%an|%ar');
+            $statusResult = SecureGitRunner::runInDirectory($repo->path, 'status --porcelain --branch');
+            $commitResult = SecureGitRunner::runInDirectory($repo->path, 'log -1 --pretty=format:%h|%s|%an|%ar');
 
             if (!$statusResult['success']) {
                 $errorMessage = 'Failed to get repository status';
@@ -3077,6 +3082,7 @@ class MultiRepoAjax
                     'ahead'         => 0,
                     'hasChanges'    => false,
                     'currentBranch' => $currentBranch,
+                    'folderExists'  => true,
                 ];
                 continue;
             }
@@ -3117,6 +3123,7 @@ class MultiRepoAjax
                 'ahead'         => $ahead,
                 'hasChanges'    => $hasChanges,
                 'currentBranch' => $currentBranch,
+                'folderExists'  => true,
                 'rawOutput'     => $statusOutput,
             ];
 

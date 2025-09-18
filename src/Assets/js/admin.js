@@ -4141,9 +4141,6 @@ class GitManager {
         ) {
             return;
         }
-        const deleteFiles = confirm(
-            "Do you also want to delete the repository files from the disk? This action is also permanent."
-        );
 
         this.showNotification(
             WPGitManagerGlobal.translations.deletingRepository,
@@ -4152,7 +4149,7 @@ class GitManager {
         try {
             const result = await this.apiCall("git_manager_repo_delete", {
                 id: repoId,
-                delete_files: deleteFiles,
+                delete_files: false, // Always false, never delete files from disk.
             });
 
             if (result.success) {
