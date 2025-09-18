@@ -50,14 +50,16 @@ class GitManager {
         // Initialize theme from storage (defaults handled in getStoredTheme)
         this.theme = this.getStoredTheme();
         this.urlAutofillTimer = null; // Debounce timer for URL autofill
-        this.init();
 
+        // Bind handlers BEFORE initialization so event listeners use bound methods
         this.handleGlobalClick = this.handleGlobalClick.bind(this);
         this.handleGlobalKeydown = this.handleGlobalKeydown.bind(this);
         this.handleFormSubmit = this.handleFormSubmit.bind(this);
         this.handleModalBackdropClick =
             this.handleModalBackdropClick.bind(this);
         this.selectRepository = this.selectRepository.bind(this);
+
+        this.init();
 
         // Run initializer
         if (document.readyState === "loading") {
