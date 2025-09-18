@@ -51,6 +51,17 @@ class GitManager {
         this.theme = this.getStoredTheme();
         this.urlAutofillTimer = null; // Debounce timer for URL autofill
         this.init();
+
+        this.handleGlobalKeydown = this.handleGlobalKeydown.bind(this);
+        this.handleFormSubmit = this.handleFormSubmit.bind(this);
+        this.handleModalBackdropClick =
+            this.handleModalBackdropClick.bind(this);
+        this.selectRepository = this.selectRepository.bind(this);
+
+        // Run initializer
+        if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", () => this.init());
+        }
     }
 
     init() {
