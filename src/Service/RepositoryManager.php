@@ -53,6 +53,10 @@ class RepositoryManager
         $this->cache = [];
         $unique_paths = [];
 
+        echo '<pre>';
+        var_dump($stored);
+        echo '</pre>';
+        die;
         foreach ($stored as $item) {
             if (is_array($item)) {
                 $repo = new Repository($item);
