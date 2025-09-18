@@ -27,6 +27,15 @@ class Repository
 
     public array $debug_info = [];
 
+    // Derived flags to help frontend render accurate states
+    public ?bool $folderExists = null;
+
+    public ?bool $isReadable = null;
+
+    public ?bool $isValidGit = null;
+
+    public ?string $repoType = null;
+
     public function __construct(array $data)
     {
         $this->id        = $data['id'] ?? wp_generate_uuid4();
@@ -78,6 +87,10 @@ class Repository
             'meta'         => $this->meta,
             'activeBranch' => $this->activeBranch,
             'debug_info'   => $this->debug_info,
+            'folderExists' => $this->folderExists,
+            'isReadable'   => $this->isReadable,
+            'isValidGit'   => $this->isValidGit,
+            'repoType'     => $this->repoType,
         ];
     }
 }

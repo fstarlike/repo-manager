@@ -2177,9 +2177,15 @@ class GitManager {
     }
 
     createRepoCardHTML(repo) {
-        // Check if repository folder is missing
+        // Problem states first
         if (!repo.folderExists) {
-            return this.createMissingFolderCardHTML(repo);
+            return this.createProblemRepoCardHTML(repo, "missing");
+        }
+        if (repo.folderExists && repo.isReadable === false) {
+            return this.createProblemRepoCardHTML(repo, "unreadable");
+        }
+        if (repo.folderExists && repo.isValidGit === false) {
+            return this.createProblemRepoCardHTML(repo, "invalidGit");
         }
 
         // Determine status class based on repository state - using same logic as overview tab
@@ -2264,7 +2270,7 @@ class GitManager {
         `;
     }
 
-    createMissingFolderCardHTML(repo) {
+    createProblemRepoCardHTML(repo, problem) {
         // Determine badge text based on repository type
         const badgeText =
             repo.repoType === "plugin"
@@ -2273,13 +2279,23 @@ class GitManager {
                 ? "Theme"
                 : "Other";
 
+        let problemClass = "missing";
+        let problemTitle = "Repository folder is missing";
+        if (problem === "invalidGit") {
+            problemClass = "invalid";
+            problemTitle = "Not a valid Git repository at this path";
+        } else if (problem === "unreadable") {
+            problemClass = "unreadable";
+            problemTitle = "Repository path is not readable by the server";
+        }
+
         return `
-            <div class="git-repo-card git-repo-card-missing" data-repo-id="${
-                repo.id
-            }">
+            <div class="git-repo-card git-repo-card-${problemClass}" data-repo-id="${this.escapeHtml(
+            String(repo.id)
+        )}">
                 <div class="repo-card-header">
                     <h4 class="repo-name">${this.escapeHtml(repo.name)}</h4>
-                    <div class="repo-status missing">
+                    <div class="repo-status ${problemClass}">
                         <span class="status-dot"></span>
                     </div>
                 </div>
@@ -2292,7 +2308,7 @@ class GitManager {
                             <line x1="12" y1="9" x2="12" y2="13"/>
                             <line x1="12" y1="17" x2="12.01" y2="17"/>
                         </svg>
-                        Repository folder is missing
+                        ${this.escapeHtml(problemTitle)}
                     </div>
                     <span class="repo-hashtag ${
                         repo.repoType || "other"
@@ -2300,6 +2316,12 @@ class GitManager {
                 </div>
 
                 <div class="repo-card-actions">
+                    <button class="repo-action-btn repo-troubleshoot-btn" data-action="troubleshoot" title="Troubleshoot this repository" onclick="window.safeGitManagerCall('troubleshootRepoFor', '${
+                        repo.id
+                    }')">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
+                        Troubleshoot
+                    </button>
                     <button class="repo-action-btn repo-reclone-btn" data-action="reclone" title="Re-clone repository to same path" onclick="window.safeGitManagerCall('reCloneRepository', '${
                         repo.id
                     }')">
@@ -2319,9 +2341,9 @@ class GitManager {
                         </svg>
                         Manage Path
                     </button>
-                                            <button class="repo-action-btn repo-delete-btn" data-action="delete" title="Delete repository" onclick="window.safeGitManagerCall('deleteRepository', '${
-                                                repo.id
-                                            }')">
+                    <button class="repo-action-btn repo-delete-btn" data-action="delete" title="Delete repository" onclick="window.safeGitManagerCall('deleteRepository', '${
+                        repo.id
+                    }')">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
                             <path d="M3 6h18"/>
                             <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
@@ -2331,6 +2353,11 @@ class GitManager {
                 </div>
             </div>
         `;
+    }
+
+    // Backward-compatible wrapper
+    createMissingFolderCardHTML(repo) {
+        return this.createProblemRepoCardHTML(repo, "missing");
     }
 
     getCardStatusText(status) {
@@ -2365,16 +2392,20 @@ class GitManager {
             selectedCard.classList.add("active");
         }
 
-        // Check if this is a missing folder repository
-        if (
+        // If problematic, open troubleshooting for this repo
+        const isProblem =
             selectedCard &&
-            selectedCard.classList.contains("git-repo-card-missing")
-        ) {
-            this.showMissingFolderMessage(repoId);
-            return;
-        }
+            (selectedCard.classList.contains("git-repo-card-missing") ||
+                selectedCard.classList.contains("git-repo-card-invalid") ||
+                selectedCard.classList.contains("git-repo-card-unreadable"));
 
         this.currentRepo = repoId;
+
+        if (isProblem) {
+            // Directly launch troubleshooting with proper styling
+            this.troubleshootRepo();
+            return;
+        }
 
         // Add a small delay to ensure DOM is ready
         setTimeout(() => {

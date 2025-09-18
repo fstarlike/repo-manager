@@ -148,17 +148,26 @@ class MultiRepoAjax
             $repo->debug_info             = [];
             $repo->debug_info['storedPath'] = $repo->path;
 
-            if (! is_dir($repo->path)) {
+            // Compute derived flags for frontend messaging
+            $repo->folderExists = is_dir($repo->path);
+            $repo->isReadable   = is_readable($repo->path);
+
+            if (! $repo->folderExists) {
                 $repo->debug_info['is_dir_check']      = 'failed';
-                $repo->debug_info['is_readable_check'] = is_readable($repo->path) ? 'passed' : 'failed';
-                $repo->activeBranch                  = null;
+                $repo->debug_info['is_readable_check'] = $repo->isReadable ? 'passed' : 'failed';
+                $repo->activeBranch                    = null;
+                // Determine repo type from stored path for better hinting
+                $repo->repoType = $this->determineRepositoryType($repo->path);
                 continue;
             }
             $repo->debug_info['is_dir_check'] = 'passed';
+            $repo->repoType = $this->determineRepositoryType($repo->path);
 
-            if (! SecureGitRunner::isGitRepositoryPath($repo->path)) {
+            // Validate git repository (supports .git dir or worktree file)
+            $repo->isValidGit = SecureGitRunner::isGitRepositoryPath($repo->path);
+            if (! $repo->isValidGit) {
                 $repo->debug_info['is_git_repo_check'] = 'failed';
-                $repo->activeBranch                  = null;
+                $repo->activeBranch                    = null;
                 continue;
             }
             $repo->debug_info['is_git_repo_check'] = 'passed';
