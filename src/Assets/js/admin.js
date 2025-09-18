@@ -115,10 +115,8 @@ class GitManager {
      */
     setupEventListeners() {
         // Global event delegation
-        document.addEventListener("click", (e) => this.handleGlobalClick(e));
-        document.addEventListener("keydown", (e) =>
-            this.handleGlobalKeydown(e)
-        );
+        document.addEventListener("click", this.handleGlobalClick);
+        document.addEventListener("keydown", this.handleGlobalKeydown);
 
         // Window events
         window.addEventListener(
@@ -127,14 +125,10 @@ class GitManager {
         );
 
         // Form submissions
-        document.addEventListener("submit", (e) => this.handleFormSubmit(e));
+        document.addEventListener("submit", this.handleFormSubmit);
 
         // Modal backdrop clicks
-        document.addEventListener("click", (e) => {
-            if (e.target.classList.contains("git-modal-overlay")) {
-                this.closeModal(e.target.dataset.modalId);
-            }
-        });
+        document.addEventListener("click", this.handleModalBackdropClick);
 
         // Add repository form - toggle branch field visibility
         const addRepoForm = document.getElementById("add-repo-form");
