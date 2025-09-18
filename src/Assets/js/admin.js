@@ -50,6 +50,8 @@ class GitManager {
         // Initialize theme from storage (defaults handled in getStoredTheme)
         this.theme = this.getStoredTheme();
         this.urlAutofillTimer = null; // Debounce timer for URL autofill
+        this._initialized = false; // Ensure init runs only once
+        this._ajaxWaitAttempts = 0; // Retry counter for waiting gitManagerAjax
 
         // Bind handlers BEFORE initialization so event listeners use bound methods
         this.handleGlobalClick = this.handleGlobalClick.bind(this);
@@ -59,18 +61,27 @@ class GitManager {
             this.handleModalBackdropClick.bind(this);
         this.selectRepository = this.selectRepository.bind(this);
 
-        this.init();
-
-        // Run initializer
+        // Initialize when DOM is ready; if already ready, run now
         if (document.readyState === "loading") {
             document.addEventListener("DOMContentLoaded", () => this.init());
+        } else {
+            this.init();
         }
     }
 
     init() {
         try {
-            // Check if AJAX data is available before proceeding
+            // Avoid double initialization
+            if (this._initialized) return;
+
+            // Ensure AJAX data is available; retry briefly if not yet defined
             if (typeof gitManagerAjax === "undefined") {
+                if (this._ajaxWaitAttempts < 30) {
+                    this._ajaxWaitAttempts++;
+                    setTimeout(() => this.init(), 100);
+                } else {
+                    console.warn("GitManager: gitManagerAjax not found; initialization skipped after retries.");
+                }
                 return;
             }
 
@@ -90,6 +101,9 @@ class GitManager {
             setInterval(() => {
                 this.ensureButtonFunctionality();
             }, 5000); // Check every 5 seconds
+
+            // Mark as initialized before starting background updates
+            this._initialized = true;
 
             // Start lightweight polling to keep UI live on slow hosts
             this.startLiveUpdates();
