@@ -2210,7 +2210,9 @@ class MultiRepoAjax
             ]);
         }
 
-        $result = GitCommandRunner::run($repo->path, 'config --local --add safe.directory ' . escapeshellarg($repo->path));
+        // Resolve path before configuring safe.directory
+        $resolvedPath = $this->repositoryManager->resolvePath($repo->path);
+        $result = GitCommandRunner::run($resolvedPath, 'config --local --add safe.directory ' . escapeshellarg($resolvedPath));
         if ($result['success']) {
             wp_send_json_success(['message' => 'Safe directory configured']);
         } else {
@@ -2225,7 +2227,7 @@ class MultiRepoAjax
         $step = sanitize_text_field(wp_unslash($_POST['step'] ?? ''));
         $id   = $this->getRepositoryId();
 
-        if ('' === $repoId || '0' === $repoId) {
+        if ('' === $id || '0' === $id) {
             wp_send_json_error('No repository specified');
         }
 
@@ -2234,8 +2236,11 @@ class MultiRepoAjax
             wp_send_json_error('Repository not found');
         }
 
-        // Perform step-specific troubleshooting
-        $result = $this->performTroubleshootStep($step, $repo->path);
+        // Resolve repository path (supports relative paths)
+        $resolvedPath = $this->repositoryManager->resolvePath($repo->path);
+
+        // Perform step-specific troubleshooting using resolved path
+        $result = $this->performTroubleshootStep($step, $resolvedPath);
         wp_send_json_success($result);
     }
 
