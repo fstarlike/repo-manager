@@ -172,12 +172,12 @@ class MultiRepoAjax
         }
 
         // Get current branch
-        $currentBranch      = GitCommandRunner::run($repo->path, 'rev-parse --abbrev-ref HEAD');
+        $currentBranch      = GitCommandRunner::run($resolvedPath, 'rev-parse --abbrev-ref HEAD');
         $repo->activeBranch = trim($currentBranch['output'] ?? 'Unknown');
 
         // If branch detection failed, try alternative method
         if ('' === $repo->activeBranch || '0' === $repo->activeBranch || 'Unknown' === $repo->activeBranch) {
-            $statusResult = GitCommandRunner::run($repo->path, 'status --porcelain --branch');
+            $statusResult = GitCommandRunner::run($resolvedPath, 'status --porcelain --branch');
             if ($statusResult['success']) {
                 $lines = explode("\n", trim($statusResult['output'] ?? ''));
                 foreach ($lines as $line) {
@@ -191,7 +191,7 @@ class MultiRepoAjax
 
         // If still no branch, try to get it from HEAD
         if ('' === $repo->activeBranch || '0' === $repo->activeBranch || 'Unknown' === $repo->activeBranch) {
-            $headResult         = GitCommandRunner::run($repo->path, 'symbolic-ref --short HEAD');
+            $headResult         = GitCommandRunner::run($resolvedPath, 'symbolic-ref --short HEAD');
             $repo->activeBranch = trim($headResult['output'] ?? 'main');
         }
 
@@ -206,7 +206,7 @@ class MultiRepoAjax
         }
 
         // Get branch status (ahead/behind)
-        $branchStatus = GitCommandRunner::run($repo->path, 'status --porcelain --branch');
+        $branchStatus = GitCommandRunner::run($resolvedPath, 'status --porcelain --branch');
         $ahead        = 0;
         $behind       = 0;
         if ($branchStatus['success']) {
@@ -227,16 +227,16 @@ class MultiRepoAjax
         }
 
         // Get repository status
-        $status     = GitCommandRunner::run($repo->path, 'status --porcelain');
+        $status     = GitCommandRunner::run($resolvedPath, 'status --porcelain');
         $hasChanges = !in_array(trim($status['output'] ?? ''), ['', '0'], true);
 
         // Get remote info
-        $remote    = GitCommandRunner::run($repo->path, 'remote get-url origin');
+        $remote    = GitCommandRunner::run($resolvedPath, 'remote get-url origin');
         $remoteUrl = trim($remote['output'] ?? '');
 
         // If no remote URL found, try to get it from config
         if ('' === $remoteUrl || '0' === $remoteUrl) {
-            $configResult = GitCommandRunner::run($repo->path, 'config --get remote.origin.url');
+            $configResult = GitCommandRunner::run($resolvedPath, 'config --get remote.origin.url');
             $remoteUrl    = trim($configResult['output'] ?? '');
         }
 
@@ -245,9 +245,19 @@ class MultiRepoAjax
             $remoteUrl = 'No remote configured';
         }
 
-        // Check if repository directory exists
-        $directoryExists    = is_dir($repo->path);
-        $gitDirectoryExists = is_dir($repo->path . '/.git');
+        // Check if repository directory exists with improved path resolution
+        $resolvedPath = $this->resolveRepositoryPath($repo->path);
+        $directoryExists    = is_dir($resolvedPath);
+        $gitDirectoryExists = is_dir($resolvedPath . '/.git');
+
+        // If resolved path doesn't exist, try the original path as fallback
+        if (!$directoryExists && $repo->path !== $resolvedPath) {
+            $directoryExists = is_dir($repo->path);
+            if ($directoryExists) {
+                $resolvedPath = $repo->path;
+                $gitDirectoryExists = is_dir($resolvedPath . '/.git');
+            }
+        }
 
         // If directory doesn't exist, return basic info for missing repositories
         if (! $directoryExists) {
@@ -292,7 +302,7 @@ class MultiRepoAjax
         }
 
         // Validate that this is actually a git repository
-        $gitCheck = GitCommandRunner::run($repo->path, 'rev-parse --git-dir');
+        $gitCheck = GitCommandRunner::run($resolvedPath, 'rev-parse --git-dir');
         if (! $gitCheck['success']) {
             $details = [
                 'id'           => $repo->id,
@@ -3200,8 +3210,9 @@ class MultiRepoAjax
                 continue;
             }
 
-            // Check if repository directory exists
-            if (!is_dir($repo->path)) {
+            // Check if repository directory exists with improved path resolution
+            $resolvedPath = $this->resolveRepositoryPath($repo->path);
+            if (!is_dir($resolvedPath)) {
                 $results[$repo->id] = [
                     'status'        => null,
                     'status_error'  => 'Repository directory does not exist: ' . $repo->path,
@@ -3216,7 +3227,7 @@ class MultiRepoAjax
             }
 
             // Check if .git directory exists
-            if (! \WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($repo->path)) {
+            if (! \WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($resolvedPath)) {
                 $results[$repo->id] = [
                     'status'        => null,
                     'status_error'  => 'Not a valid Git repository: .git directory not found',
@@ -3240,7 +3251,7 @@ class MultiRepoAjax
             // }
 
             // Get branch information
-            $branchResult  = SecureGitRunner::runInDirectory($repo->path, 'rev-parse --abbrev-ref HEAD');
+            $branchResult  = SecureGitRunner::runInDirectory($resolvedPath, 'rev-parse --abbrev-ref HEAD');
             $currentBranch = trim($branchResult['output'] ?? '');
 
             if (!$branchResult['success'] || ('' === $currentBranch || '0' === $currentBranch)) {
@@ -3258,8 +3269,8 @@ class MultiRepoAjax
             }
 
             // Get detailed status with branch information
-            $statusResult = SecureGitRunner::runInDirectory($repo->path, 'status --porcelain --branch');
-            $commitResult = SecureGitRunner::runInDirectory($repo->path, 'log -1 --pretty=format:%h|%s|%an|%ar');
+            $statusResult = SecureGitRunner::runInDirectory($resolvedPath, 'status --porcelain --branch');
+            $commitResult = SecureGitRunner::runInDirectory($resolvedPath, 'log -1 --pretty=format:%h|%s|%an|%ar');
 
             if (!$statusResult['success']) {
                 $errorMessage = 'Failed to get repository status';
@@ -3324,5 +3335,52 @@ class MultiRepoAjax
         }
 
         wp_send_json_success($results);
+    }
+
+    /**
+     * Resolve repository path with improved path handling
+     *
+     * @param string $path The repository path to resolve
+     * @return string The resolved absolute path
+     */
+    private function resolveRepositoryPath(string $path): string
+    {
+        // If path is already absolute, return as is
+        if (path_is_absolute($path)) {
+            return $path;
+        }
+
+        // Handle WordPress relative paths
+        $wpRelativePaths = ['/wp-content', '/wp-admin', '/wp-includes', '/wp-json'];
+        $isWpRelative = false;
+        foreach ($wpRelativePaths as $wpPath) {
+            if (0 === strpos($path, $wpPath)) {
+                $isWpRelative = true;
+                break;
+            }
+        }
+
+        if ($isWpRelative) {
+            $resolvedPath = ABSPATH . ltrim($path, '/');
+        } else {
+            // Try to resolve relative path from WordPress root
+            $resolvedPath = ABSPATH . ltrim($path, '/');
+        }
+
+        // Normalize path separators
+        $resolvedPath = str_replace(['\\', '/'], DIRECTORY_SEPARATOR, $resolvedPath);
+
+        // Remove any double separators
+        $resolvedPath = preg_replace('/' . preg_quote(DIRECTORY_SEPARATOR, '/') . '+/', DIRECTORY_SEPARATOR, $resolvedPath);
+
+        // Resolve any '..' and '.' in the path
+        $resolvedPath = realpath($resolvedPath) ?: $resolvedPath;
+
+        // Log path resolution for debugging (only in development)
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log("Repo Manager: Resolving path '{$path}' to '{$resolvedPath}' (exists: " . (is_dir($resolvedPath) ? 'yes' : 'no') . ")");
+        }
+
+        return $resolvedPath;
     }
 }
