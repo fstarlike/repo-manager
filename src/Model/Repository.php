@@ -37,15 +37,10 @@ class Repository
 
     public function toArray(): array
     {
-        $resolvedPath = realpath($this->path);
-        if (false === $resolvedPath) {
-            $resolvedPath = $this->path;
-        }
-
         return [
             'id'           => $this->id,
             'name'         => $this->name,
-            'path'         => $resolvedPath,
+            'path'         => wp_normalize_path($this->path),
             'remoteUrl'    => $this->remoteUrl,
             'authType'     => $this->authType,
             'meta'         => $this->meta,
