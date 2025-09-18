@@ -2419,22 +2419,10 @@ class GitManager {
             selectedCard.classList.add("active");
         }
 
-        // If problematic, open troubleshooting for this repo
-        const isProblem =
-            selectedCard &&
-            (selectedCard.classList.contains("git-repo-card-missing") ||
-                selectedCard.classList.contains("git-repo-card-invalid") ||
-                selectedCard.classList.contains("git-repo-card-unreadable"));
-
         this.currentRepo = repoId;
 
-        if (isProblem) {
-            // Directly launch troubleshooting with proper styling
-            this.troubleshootRepo();
-            return;
-        }
-
-        // Add a small delay to ensure DOM is ready
+        // Always show repository details when card is clicked
+        // Troubleshooting should only be opened when the troubleshoot button is clicked
         setTimeout(() => {
             this.showRepositoryDetails(repoId);
         }, 100);
@@ -6946,6 +6934,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
                 window.GitManager.troubleshootRepo();
             };
+
+            // Add troubleshootRepoFor to GitManager class so safeGitManagerCall can access it
+            if (window.GitManager) {
+                window.GitManager.troubleshootRepoFor =
+                    window.troubleshootRepoFor;
+            }
         } else {
         }
     } catch (error) {}

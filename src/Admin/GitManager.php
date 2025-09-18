@@ -37,9 +37,33 @@ class GitManager
     {
         if (null === self::$instance) {
             self::$instance = new self();
+
+            // Run one-time migration for existing repositories
+            self::$instance->runMigrations();
         }
 
         return self::$instance;
+    }
+
+    /**
+     * Run necessary migrations
+     */
+    private function runMigrations(): void
+    {
+        // Check if migration has already been run
+        $migrationVersion = get_option('git_manager_migration_version', '0');
+
+        if (version_compare($migrationVersion, '1.0.1', '<')) {
+            // Migrate absolute paths to relative paths
+            $repositoryManager = \WPGitManager\Service\RepositoryManager::instance();
+            $migrated = $repositoryManager->migrateAbsolutePathsToRelative();
+
+            if ($migrated > 0) {
+                error_log("Repo Manager: Migrated {$migrated} repositories from absolute to relative paths");
+            }
+
+            update_option('git_manager_migration_version', '1.0.1');
+        }
     }
 
     /**

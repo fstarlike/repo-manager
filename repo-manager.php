@@ -100,18 +100,21 @@ function git_manager_enqueue_global_checker($hook)
                 'ajaxurl'       => admin_url('admin-ajax.php'),
                 'nonce'         => wp_create_nonce('git_manager_action'),
                 'action_nonces' => [
-                    'git_manager_latest_commit'     => wp_create_nonce('git_manager_latest_commit'),
-                    'git_manager_fetch'             => wp_create_nonce('git_manager_fetch'),
-                    'git_manager_pull'              => wp_create_nonce('git_manager_pull'),
-                    'git_manager_get_branches'      => wp_create_nonce('git_manager_get_branches'),
-                    'git_manager_checkout'          => wp_create_nonce('git_manager_checkout'),
-                    'git_manager_get_repos'         => wp_create_nonce('git_manager_get_repos'),
-                    'git_manager_troubleshoot_step' => wp_create_nonce('git_manager_troubleshoot_step'),
+                    'git_manager_latest_commit'     => wp_create_nonce('git_manager_action'),
+                    'git_manager_fetch'             => wp_create_nonce('git_manager_action'),
+                    'git_manager_pull'              => wp_create_nonce('git_manager_action'),
+                    'git_manager_get_branches'      => wp_create_nonce('git_manager_action'),
+                    'git_manager_checkout'          => wp_create_nonce('git_manager_action'),
+                    'git_manager_get_repos'         => wp_create_nonce('git_manager_action'),
+                    'git_manager_troubleshoot_step' => wp_create_nonce('git_manager_action'),
+                    'git_manager_bulk_repo_status'  => wp_create_nonce('git_manager_action'),
+                    'git_manager_repo_git'          => wp_create_nonce('git_manager_action'),
+                    'git_manager_repo_push'         => wp_create_nonce('git_manager_action'),
                 ],
             ]);
             wp_localize_script('repo-manager-floating-widget', 'gitManagerNonce', [
                 'nonce'                 => wp_create_nonce('git_manager_action'),
-                'git_manager_get_repos' => wp_create_nonce('git_manager_get_repos'),
+                'git_manager_get_repos' => wp_create_nonce('git_manager_action'),
             ]);
         }
     }
@@ -194,7 +197,10 @@ add_action('init', function () {
         $auditLogger     = AuditLogger::instance();
         $credentialStore = new CredentialStore();
         $systemStatus    = new SystemStatus();
-        new MultiRepoAjax($rateLimiter, $auditLogger, $credentialStore, $systemStatus);
+        $multiRepoAjax   = new MultiRepoAjax($rateLimiter, $auditLogger, $credentialStore, $systemStatus);
+
+        // GitController is not needed as MultiRepoAjax handles all AJAX actions
+        // This prevents duplicate registrations and conflicts
     }
 });
 

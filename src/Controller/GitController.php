@@ -61,7 +61,6 @@ class GitController
      */
     public function executeGitCommand(): void
     {
-        check_ajax_referer('git_manager_action', 'nonce');
         $this->ensureCapabilities();
 
         if (!$this->rateLimiter->checkAjaxRateLimit('git_manager_repo_git')) {
@@ -86,9 +85,10 @@ class GitController
                 throw new \Exception('Repository not found');
             }
 
-            $result = $this->gitRunner->run($repository->path, $command, $args);
+            $resolvedPath = $this->repositoryManager->resolvePath($repository->path);
+            $result = $this->gitRunner->run($resolvedPath, $command, $args);
 
-            $this->auditLogger->logGitCommand($command, $repository->path, $result['success'], $result['output'] ?? null);
+            $this->auditLogger->logGitCommand($command, $resolvedPath, $result['success'], $result['output'] ?? null);
 
             if ($result['success']) {
                 wp_send_json_success($result);
@@ -110,7 +110,6 @@ class GitController
      */
     public function push(): void
     {
-        check_ajax_referer('git_manager_action', 'nonce');
         $this->ensureCapabilities();
 
         if (!$this->rateLimiter->checkAjaxRateLimit('git_manager_repo_push')) {
@@ -130,9 +129,10 @@ class GitController
                 throw new \Exception('Repository not found');
             }
 
-            $result = $this->gitRunner->run($repository->path, 'push', $this->buildPushArgs($options));
+            $resolvedPath = $this->repositoryManager->resolvePath($repository->path);
+            $result = $this->gitRunner->run($resolvedPath, 'push', $this->buildPushArgs($options));
 
-            $this->auditLogger->logGitCommand('push', $repository->path, $result['success'], $result['output'] ?? null);
+            $this->auditLogger->logGitCommand('push', $resolvedPath, $result['success'], $result['output'] ?? null);
 
             if ($result['success']) {
                 wp_send_json_success($result);
@@ -153,7 +153,6 @@ class GitController
      */
     public function merge(): void
     {
-        check_ajax_referer('git_manager_action', 'nonce');
         $this->ensureCapabilities();
 
         if (!$this->rateLimiter->checkAjaxRateLimit('git_manager_repo_merge')) {
@@ -178,9 +177,10 @@ class GitController
                 throw new \Exception('Repository not found');
             }
 
-            $result = $this->gitRunner->run($repository->path, 'merge', $this->buildMergeArgs($branch, $options));
+            $resolvedPath = $this->repositoryManager->resolvePath($repository->path);
+            $result = $this->gitRunner->run($resolvedPath, 'merge', $this->buildMergeArgs($branch, $options));
 
-            $this->auditLogger->logGitCommand('merge', $repository->path, $result['success'], $result['output'] ?? null);
+            $this->auditLogger->logGitCommand('merge', $resolvedPath, $result['success'], $result['output'] ?? null);
 
             if ($result['success']) {
                 wp_send_json_success($result);
@@ -202,7 +202,6 @@ class GitController
      */
     public function createTag(): void
     {
-        check_ajax_referer('git_manager_action', 'nonce');
         $this->ensureCapabilities();
 
         if (!$this->rateLimiter->checkAjaxRateLimit('git_manager_repo_tag')) {
@@ -224,10 +223,11 @@ class GitController
                 throw new \Exception('Repository not found');
             }
 
+            $resolvedPath = $this->repositoryManager->resolvePath($repository->path);
             $args   = $annotated ? ['-a', $tagName, '-m', $message] : [$tagName];
-            $result = $this->gitRunner->run($repository->path, 'tag', $args);
+            $result = $this->gitRunner->run($resolvedPath, 'tag', $args);
 
-            $this->auditLogger->logGitCommand('tag', $repository->path, $result['success'], $result['output'] ?? null);
+            $this->auditLogger->logGitCommand('tag', $resolvedPath, $result['success'], $result['output'] ?? null);
 
             if ($result['success']) {
                 wp_send_json_success($result);
@@ -249,7 +249,6 @@ class GitController
      */
     public function detailedLog(): void
     {
-        check_ajax_referer('git_manager_action', 'nonce');
         $this->ensureCapabilities();
 
         if (!$this->rateLimiter->checkAjaxRateLimit('git_manager_detailed_log')) {
@@ -271,7 +270,8 @@ class GitController
                 throw new \Exception('Repository not found');
             }
 
-            $result = $this->gitRunner->run($repository->path, 'log', $this->buildLogArgs($options));
+            $resolvedPath = $this->repositoryManager->resolvePath($repository->path);
+            $result = $this->gitRunner->run($resolvedPath, 'log', $this->buildLogArgs($options));
 
             if ($result['success']) {
                 wp_send_json_success($result);
@@ -292,7 +292,6 @@ class GitController
      */
     public function createBranch(): void
     {
-        check_ajax_referer('git_manager_action', 'nonce');
         $this->ensureCapabilities();
 
         if (!$this->rateLimiter->checkAjaxRateLimit('git_manager_repo_create_branch')) {
@@ -313,10 +312,11 @@ class GitController
                 throw new \Exception('Repository not found');
             }
 
+            $resolvedPath = $this->repositoryManager->resolvePath($repository->path);
             $args   = $checkout ? ['-b', $branchName] : [$branchName];
-            $result = $this->gitRunner->run($repository->path, 'branch', $args);
+            $result = $this->gitRunner->run($resolvedPath, 'branch', $args);
 
-            $this->auditLogger->logGitCommand('branch', $repository->path, $result['success'], $result['output'] ?? null);
+            $this->auditLogger->logGitCommand('branch', $resolvedPath, $result['success'], $result['output'] ?? null);
 
             if ($result['success']) {
                 wp_send_json_success($result);
@@ -338,7 +338,6 @@ class GitController
      */
     public function deleteBranch(): void
     {
-        check_ajax_referer('git_manager_action', 'nonce');
         $this->ensureCapabilities();
 
         if (!$this->rateLimiter->checkAjaxRateLimit('git_manager_repo_delete_branch')) {
@@ -359,10 +358,11 @@ class GitController
                 throw new \Exception('Repository not found');
             }
 
+            $resolvedPath = $this->repositoryManager->resolvePath($repository->path);
             $args   = $force ? ['-D', $branchName] : ['-d', $branchName];
-            $result = $this->gitRunner->run($repository->path, 'branch', $args);
+            $result = $this->gitRunner->run($resolvedPath, 'branch', $args);
 
-            $this->auditLogger->logGitCommand('branch', $repository->path, $result['success'], $result['output'] ?? null);
+            $this->auditLogger->logGitCommand('branch', $resolvedPath, $result['success'], $result['output'] ?? null);
 
             if ($result['success']) {
                 wp_send_json_success($result);
@@ -384,7 +384,6 @@ class GitController
      */
     public function stash(): void
     {
-        check_ajax_referer('git_manager_action', 'nonce');
         $this->ensureCapabilities();
 
         if (!$this->rateLimiter->checkAjaxRateLimit('git_manager_repo_stash')) {
@@ -401,6 +400,7 @@ class GitController
                 throw new \Exception('Repository not found');
             }
 
+            $resolvedPath = $this->repositoryManager->resolvePath($repository->path);
             $args = ['push'];
             if (!empty($message)) {
                 $args[] = '-m';
@@ -411,9 +411,9 @@ class GitController
                 $args[] = '--include-untracked';
             }
 
-            $result = $this->gitRunner->run($repository->path, 'stash', $args);
+            $result = $this->gitRunner->run($resolvedPath, 'stash', $args);
 
-            $this->auditLogger->logGitCommand('stash', $repository->path, $result['success'], $result['output'] ?? null);
+            $this->auditLogger->logGitCommand('stash', $resolvedPath, $result['success'], $result['output'] ?? null);
 
             if ($result['success']) {
                 wp_send_json_success($result);
@@ -434,7 +434,6 @@ class GitController
      */
     public function stashPop(): void
     {
-        check_ajax_referer('git_manager_action', 'nonce');
         $this->ensureCapabilities();
 
         if (!$this->rateLimiter->checkAjaxRateLimit('git_manager_repo_stash_pop')) {
@@ -449,9 +448,10 @@ class GitController
                 throw new \Exception('Repository not found');
             }
 
-            $result = $this->gitRunner->run($repository->path, 'stash', ['pop']);
+            $resolvedPath = $this->repositoryManager->resolvePath($repository->path);
+            $result = $this->gitRunner->run($resolvedPath, 'stash', ['pop']);
 
-            $this->auditLogger->logGitCommand('stash pop', $repository->path, $result['success'], $result['output'] ?? null);
+            $this->auditLogger->logGitCommand('stash pop', $resolvedPath, $result['success'], $result['output'] ?? null);
 
             if ($result['success']) {
                 wp_send_json_success($result);
@@ -472,7 +472,6 @@ class GitController
      */
     public function checkout(): void
     {
-        check_ajax_referer('git_manager_action', 'nonce');
         $this->ensureCapabilities();
 
         if (!$this->rateLimiter->checkAjaxRateLimit('git_manager_repo_checkout')) {
@@ -494,6 +493,7 @@ class GitController
                 throw new \Exception('Repository not found');
             }
 
+            $resolvedPath = $this->repositoryManager->resolvePath($repository->path);
             $args = [];
             if ($create) {
                 $args[] = '-b';
@@ -505,9 +505,9 @@ class GitController
 
             $args[] = $branch;
 
-            $result = $this->gitRunner->run($repository->path, 'checkout', $args);
+            $result = $this->gitRunner->run($resolvedPath, 'checkout', $args);
 
-            $this->auditLogger->logGitCommand('checkout', $repository->path, $result['success'], $result['output'] ?? null);
+            $this->auditLogger->logGitCommand('checkout', $resolvedPath, $result['success'], $result['output'] ?? null);
 
             if ($result['success']) {
                 wp_send_json_success($result);
@@ -529,7 +529,6 @@ class GitController
      */
     public function fetch(): void
     {
-        check_ajax_referer('git_manager_action', 'nonce');
         $this->ensureCapabilities();
 
         if (!$this->rateLimiter->checkAjaxRateLimit('git_manager_fetch')) {
@@ -549,9 +548,10 @@ class GitController
                 throw new \Exception('Repository not found');
             }
 
-            $result = $this->gitRunner->run($repository->path, 'fetch', $this->buildFetchArgs($options));
+            $resolvedPath = $this->repositoryManager->resolvePath($repository->path);
+            $result = $this->gitRunner->run($resolvedPath, 'fetch', $this->buildFetchArgs($options));
 
-            $this->auditLogger->logGitCommand('fetch', $repository->path, $result['success'], $result['output'] ?? null);
+            $this->auditLogger->logGitCommand('fetch', $resolvedPath, $result['success'], $result['output'] ?? null);
 
             if ($result['success']) {
                 wp_send_json_success($result);
@@ -572,7 +572,6 @@ class GitController
      */
     public function pull(): void
     {
-        check_ajax_referer('git_manager_action', 'nonce');
         $this->ensureCapabilities();
 
         if (!$this->rateLimiter->checkAjaxRateLimit('git_manager_pull')) {
@@ -592,9 +591,10 @@ class GitController
                 throw new \Exception('Repository not found');
             }
 
-            $result = $this->gitRunner->run($repository->path, 'pull', $this->buildPullArgs($options));
+            $resolvedPath = $this->repositoryManager->resolvePath($repository->path);
+            $result = $this->gitRunner->run($resolvedPath, 'pull', $this->buildPullArgs($options));
 
-            $this->auditLogger->logGitCommand('pull', $repository->path, $result['success'], $result['output'] ?? null);
+            $this->auditLogger->logGitCommand('pull', $resolvedPath, $result['success'], $result['output'] ?? null);
 
             if ($result['success']) {
                 wp_send_json_success($result);
@@ -615,7 +615,6 @@ class GitController
      */
     public function getBranches(): void
     {
-        check_ajax_referer('git_manager_action', 'nonce');
         $this->ensureCapabilities();
 
         if (!$this->rateLimiter->checkAjaxRateLimit('git_manager_get_branches')) {
@@ -630,13 +629,64 @@ class GitController
                 throw new \Exception('Repository not found');
             }
 
-            $result = $this->gitRunner->run($repository->path, 'branch', ['-a', '-v']);
+            $resolvedPath = $this->repositoryManager->resolvePath($repository->path);
 
-            if ($result['success']) {
-                wp_send_json_success($result);
-            } else {
-                wp_send_json_error($result['output'] ?? 'Branch listing failed');
+            // Get local branches
+            $localResult = $this->gitRunner->run($resolvedPath, 'branch', []);
+            if (!$localResult['success']) {
+                throw new \Exception('Failed to get local branches: ' . ($localResult['output'] ?? ''));
             }
+
+            // Get remote branches
+            $remoteResult = $this->gitRunner->run($resolvedPath, 'branch', ['-r']);
+            if (!$remoteResult['success']) {
+                throw new \Exception('Failed to get remote branches: ' . ($remoteResult['output'] ?? ''));
+            }
+
+            // Get current branch
+            $currentResult = $this->gitRunner->run($resolvedPath, 'rev-parse', ['--abbrev-ref', 'HEAD']);
+            $currentBranch = $currentResult['success'] ? trim($currentResult['output']) : null;
+
+            // Parse local branches
+            $localBranches = [];
+            if (!empty($localResult['output'])) {
+                foreach (explode("\n", trim($localResult['output'])) as $line) {
+                    $line = trim($line);
+                    if (!empty($line)) {
+                        // Remove * marker for current branch
+                        $branchName = trim(str_replace('*', '', $line));
+                        if (!empty($branchName)) {
+                            $localBranches[] = $branchName;
+                        }
+                    }
+                }
+            }
+
+            // Parse remote branches
+            $remoteBranches = [];
+            if (!empty($remoteResult['output'])) {
+                foreach (explode("\n", trim($remoteResult['output'])) as $line) {
+                    $line = trim($line);
+                    if (!empty($line) && strpos($line, '->') === false) {
+                        // Remove origin/ prefix for cleaner display
+                        $branchName = preg_replace('/^origin\//', '', $line);
+                        if (!empty($branchName)) {
+                            $remoteBranches[] = $branchName;
+                        }
+                    }
+                }
+            }
+
+            // Combine and deduplicate branches
+            $allBranches = array_values(array_unique(array_merge($localBranches, $remoteBranches)));
+
+            wp_send_json_success([
+                'branches' => $allBranches,
+                'local_branches' => $localBranches,
+                'remote_branches' => $remoteBranches,
+                'current_branch' => $currentBranch,
+                'active_branch' => $currentBranch, // For compatibility
+            ]);
         } catch (\Exception $exception) {
             $this->auditLogger->log('error', 'git_branches_failed', [
                 'error'   => $exception->getMessage(),
@@ -651,7 +701,6 @@ class GitController
      */
     public function log(): void
     {
-        check_ajax_referer('git_manager_action', 'nonce');
         $this->ensureCapabilities();
 
         if (!$this->rateLimiter->checkAjaxRateLimit('git_manager_log')) {
@@ -671,7 +720,8 @@ class GitController
                 throw new \Exception('Repository not found');
             }
 
-            $result = $this->gitRunner->run($repository->path, 'log', $this->buildLogArgs($options));
+            $resolvedPath = $this->repositoryManager->resolvePath($repository->path);
+            $result = $this->gitRunner->run($resolvedPath, 'log', $this->buildLogArgs($options));
 
             if ($result['success']) {
                 wp_send_json_success($result);
@@ -692,7 +742,6 @@ class GitController
      */
     public function branch(): void
     {
-        check_ajax_referer('git_manager_action', 'nonce');
         $this->ensureCapabilities();
 
         if (!$this->rateLimiter->checkAjaxRateLimit('git_manager_branch')) {
@@ -708,10 +757,11 @@ class GitController
                 throw new \Exception('Repository not found');
             }
 
+            $resolvedPath = $this->repositoryManager->resolvePath($repository->path);
             $args   = $this->buildBranchArgs($operation, $_POST);
-            $result = $this->gitRunner->run($repository->path, 'branch', $args);
+            $result = $this->gitRunner->run($resolvedPath, 'branch', $args);
 
-            $this->auditLogger->logGitCommand('branch', $repository->path, $result['success'], $result['output'] ?? null);
+            $this->auditLogger->logGitCommand('branch', $resolvedPath, $result['success'], $result['output'] ?? null);
 
             if ($result['success']) {
                 wp_send_json_success($result);
@@ -736,6 +786,8 @@ class GitController
         if (!current_user_can('manage_options')) {
             wp_send_json_error('Access denied');
         }
+
+        check_ajax_referer('git_manager_action', 'nonce');
     }
 
     /**
@@ -866,6 +918,61 @@ class GitController
         }
 
         return $args;
+    }
+
+    /**
+     * Get latest commit information
+     */
+    public function latestCommit(): void
+    {
+        $this->ensureCapabilities();
+
+        if (!$this->rateLimiter->checkAjaxRateLimit('git_manager_latest_commit')) {
+            wp_send_json_error('Rate limit exceeded');
+        }
+
+        try {
+            $repoId = $this->getRepositoryId();
+
+            $repository = $this->repositoryManager->get($repoId);
+            if (!$repository instanceof Repository) {
+                throw new \Exception('Repository not found');
+            }
+
+            $resolvedPath = $this->repositoryManager->resolvePath($repository->path);
+
+            // Get latest commit info
+            $result = $this->gitRunner->run($resolvedPath, 'log', ['-1', '--pretty=format:%H|%s|%an|%ad', '--date=relative']);
+
+            if ($result['success'] && !empty($result['output'])) {
+                $parts = explode('|', $result['output'], 4);
+                if (count($parts) >= 4) {
+                    wp_send_json_success([
+                        'hash' => $parts[0],
+                        'message' => $parts[1],
+                        'author' => $parts[2],
+                        'date' => $parts[3],
+                        'short_hash' => substr($parts[0], 0, 7),
+                    ]);
+                } else {
+                    wp_send_json_success([
+                        'hash' => '',
+                        'message' => 'No commits found',
+                        'author' => '',
+                        'date' => '',
+                        'short_hash' => '',
+                    ]);
+                }
+            } else {
+                wp_send_json_error($result['output'] ?? 'Failed to get latest commit');
+            }
+        } catch (\Exception $exception) {
+            $this->auditLogger->log('error', 'git_latest_commit_failed', [
+                'error'   => $exception->getMessage(),
+                'repo_id' => $repoId ?? null,
+            ]);
+            wp_send_json_error($exception->getMessage());
+        }
     }
 
     /**

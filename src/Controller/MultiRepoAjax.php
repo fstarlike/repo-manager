@@ -789,7 +789,7 @@ class MultiRepoAjax
             CredentialStore::set($repo->id, $cred);
         }
 
-        wp_send_json_success(['output' => $cloneResult['output'], 'repository' => $repo->toArray()]);
+        wp_send_json_success(['output' => $cloneResult['output'] ?? '', 'repository' => $repo->toArray()]);
     }
 
     /** Add existing repository (no clone) */
@@ -818,25 +818,17 @@ class MultiRepoAjax
         $remoteUrlResult = SecureGitRunner::runInDirectory($absolutePath, 'config --get remote.origin.url');
         $remoteUrl       = ($remoteUrlResult['success'] && !empty($remoteUrlResult['output'])) ? trim($remoteUrlResult['output']) : '';
 
-        $repoData = [
-            'name'      => $name ?: basename($absolutePath),
-            'path'      => $absolutePath,
-            'remoteUrl' => $remoteUrl,
-            'authType'  => 'none',
-        ];
-
-        $repo = $this->repositoryManager->add($repoData);
-        $this->repositoryManager->setActive($repo->id);
+        $repo = $this->repositoryManager->add([
+            'name' => $name ?: basename($absolutePath),
+            'path' => $absolutePath,
+        ]);
 
         $repoData               = $repo->toArray();
         $repoData['exists']     = true;
         $repoData['isReadable'] = is_readable($absolutePath);
         $repoData['isValidGit'] = is_dir($absolutePath . '/.git');
 
-        wp_send_json_success([
-            'message'    => 'Repository added successfully',
-            'repository' => $repoData,
-        ]);
+        wp_send_json_success(['output' => $cloneResult['output'] ?? '', 'repository' => $repoData]);
     }
 
     public function gitOp(): void
@@ -1217,10 +1209,19 @@ class MultiRepoAjax
         }
 
         // Always resolve relative paths to absolute paths before checks
-        $path = $this->repositoryManager->resolvePath($repo->path);
-        if (! is_dir($path)) {
-            wp_send_json_error('Invalid repository path: ' . esc_html((string) $repo->path) . ' (resolved to ' . esc_html((string) $path) . '). Please verify the path in Repo Manager → Settings.');
+        $originalPath = $repo->path;
+        $resolvedPath = $this->repositoryManager->resolvePath($repo->path);
+
+        if (! is_dir($resolvedPath)) {
+            // Show original path (relative) and resolved path separately for clarity
+            wp_send_json_error(sprintf(
+                'Repository path not found. Original path: %s, Resolved path: %s. Please verify the path exists or update it in Repo Manager.',
+                esc_html($originalPath),
+                esc_html($resolvedPath)
+            ));
         }
+
+        $path = $resolvedPath;
         $html = '';
         // 1) Git binary
         $gitVersionRes = SecureGitRunner::gitVersion();
@@ -1742,7 +1743,7 @@ class MultiRepoAjax
     public function ajax_get_branches(): void
     {
         $this->ensureAllowed();
-        check_ajax_referer('git_manager_action', 'nonce');
+
         $id   = $this->getRepositoryId();
         $repo = $this->repositoryManager->get($id);
         if (!$repo) {
@@ -1750,35 +1751,60 @@ class MultiRepoAjax
         }
 
         $resolvedPath = $this->repositoryManager->resolvePath($repo->path);
+
+        // Get local branches
         $localResult = GitCommandRunner::run($resolvedPath, 'branch');
         if (!$localResult['success']) {
-            wp_send_json_error('Failed to get local branches');
+            wp_send_json_error('Failed to get local branches: ' . ($localResult['output'] ?? ''));
         }
 
+        // Get remote branches
         $remoteResult = GitCommandRunner::run($resolvedPath, 'branch -r');
         if (!$remoteResult['success']) {
-            wp_send_json_error('Failed to get remote branches');
+            wp_send_json_error('Failed to get remote branches: ' . ($remoteResult['output'] ?? ''));
         }
 
+        // Get current branch
         $activeBranchResult = GitCommandRunner::run($resolvedPath, 'rev-parse --abbrev-ref HEAD');
-        $activeBranch       = $activeBranchResult['success'] ? trim($activeBranchResult['output']) : '';
+        $activeBranch = $activeBranchResult['success'] ? trim($activeBranchResult['output']) : '';
 
-        $localBranches = array_values(array_filter(array_map(function ($b) {
-            return trim(str_replace('* ', '', $b));
-        }, explode("\n", trim($localResult['output'])))));
-
-        $remoteBranches = array_values(array_filter(array_map(function ($b) {
-            $b = trim($b);
-            if (strpos($b, '->') === false) {
-                return str_replace('origin/', '', $b);
+        // Parse local branches
+        $localBranches = [];
+        if (!empty($localResult['output'])) {
+            foreach (explode("\n", trim($localResult['output'])) as $line) {
+                $line = trim($line);
+                if (!empty($line)) {
+                    // Remove * marker for current branch
+                    $branchName = trim(str_replace('*', '', $line));
+                    if (!empty($branchName)) {
+                        $localBranches[] = $branchName;
+                    }
+                }
             }
-            return null;
-        }, explode("\n", trim($remoteResult['output'])))));
+        }
+
+        // Parse remote branches
+        $remoteBranches = [];
+        if (!empty($remoteResult['output'])) {
+            foreach (explode("\n", trim($remoteResult['output'])) as $line) {
+                $line = trim($line);
+                if (!empty($line) && strpos($line, '->') === false) {
+                    // Remove origin/ prefix for cleaner display
+                    $branchName = preg_replace('/^origin\//', '', $line);
+                    if (!empty($branchName)) {
+                        $remoteBranches[] = $branchName;
+                    }
+                }
+            }
+        }
+
+        // Combine and deduplicate branches
+        $allBranches = array_values(array_unique(array_merge($localBranches, $remoteBranches)));
 
         wp_send_json_success([
-            'branches'        => array_values(array_unique(array_merge($localBranches, $remoteBranches))),
-            'active_branch'   => $activeBranch,
-            'local_branches'  => $localBranches,
+            'branches' => $allBranches,
+            'active_branch' => $activeBranch,
+            'local_branches' => $localBranches,
             'remote_branches' => $remoteBranches,
         ]);
     }

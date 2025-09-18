@@ -115,6 +115,12 @@ class RepositoryManager
     public function add(array $data): Repository
     {
         $this->ensureLoaded();
+
+        // Convert path to relative before creating repository
+        if (isset($data['path'])) {
+            $data['path'] = $this->makeRelativePath($data['path']);
+        }
+
         $repo                   = new Repository($data);
         $this->cache[$repo->id] = $repo;
         $this->persist();
@@ -132,7 +138,12 @@ class RepositoryManager
 
         foreach (['name', 'path', 'remoteUrl', 'authType', 'meta'] as $k) {
             if (array_key_exists($k, $data)) {
-                $repo->$k = ('path' === $k) ? rtrim((string) $data[$k], '\\/') : $data[$k];
+                if ('path' === $k) {
+                    // Convert path to relative and clean it
+                    $repo->$k = $this->makeRelativePath(rtrim((string) $data[$k], '\\/'));
+                } else {
+                    $repo->$k = $data[$k];
+                }
             }
         }
 
@@ -159,6 +170,32 @@ class RepositoryManager
     }
 
     /**
+     * Convert an absolute path to a relative path (relative to ABSPATH)
+     *
+     * @param string $absolutePath The absolute path to convert.
+     * @return string The relative path.
+     */
+    public function makeRelativePath(string $absolutePath): string
+    {
+        $absolutePath = wp_normalize_path(trim($absolutePath, " \t\n\r\0\x0B\"'"));
+        $wpRoot = wp_normalize_path(rtrim(ABSPATH, '/'));
+
+        // If the path is already relative, return it as-is
+        if (!path_is_absolute($absolutePath)) {
+            return ltrim($absolutePath, '/');
+        }
+
+        // If path starts with WordPress root, make it relative
+        if (0 === strpos($absolutePath, $wpRoot)) {
+            $relativePath = substr($absolutePath, strlen($wpRoot));
+            return ltrim($relativePath, '/');
+        }
+
+        // If path is outside WordPress root, return as absolute path
+        return $absolutePath;
+    }
+
+    /**
      * Resolve a potentially relative path to a full, canonical path.
      *
      * @param string $path The path to resolve.
@@ -169,8 +206,15 @@ class RepositoryManager
         // Trim whitespace and quotes, then normalize slashes
         $path = wp_normalize_path(trim($path, " \t\n\r\0\x0B\"'"));
 
-        // If path is already an absolute path, just return it
+        // If path is already an absolute path, check if it's already resolved
         if (path_is_absolute($path)) {
+            // Check for double absolute paths (like the error you showed)
+            $wpRoot = wp_normalize_path(rtrim(ABSPATH, '/'));
+            if (strpos($path, $wpRoot . '/' . $wpRoot) !== false) {
+                // This is a double absolute path, extract the relative part
+                $relativePart = substr($path, strlen($wpRoot . '/'));
+                return $this->resolvePath($relativePart);
+            }
             return $path;
         }
 
@@ -213,6 +257,34 @@ class RepositoryManager
     }
 
     /**
+     * Convert existing absolute paths to relative paths
+     */
+    public function migrateAbsolutePathsToRelative(): int
+    {
+        $this->ensureLoaded();
+        $migrated = 0;
+
+        foreach ($this->cache as $repo) {
+            // Check if path is absolute and within WordPress root
+            if (path_is_absolute($repo->path)) {
+                $relativePath = $this->makeRelativePath($repo->path);
+
+                // Only update if we successfully converted to relative
+                if ($relativePath !== $repo->path && !path_is_absolute($relativePath)) {
+                    $repo->path = $relativePath;
+                    $migrated++;
+                }
+            }
+        }
+
+        if ($migrated > 0) {
+            $this->persist();
+        }
+
+        return $migrated;
+    }
+
+    /**
      * Clean up legacy repositories and options
      */
     public function cleanupLegacyData(): void
@@ -236,5 +308,8 @@ class RepositoryManager
         if ($activeId && ! isset($this->cache[$activeId])) {
             delete_option(self::ACTIVE_KEY);
         }
+
+        // Also migrate absolute paths to relative
+        $this->migrateAbsolutePathsToRelative();
     }
 }
