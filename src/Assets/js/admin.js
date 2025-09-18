@@ -135,6 +135,30 @@ class GitManager {
                 this.closeModal(e.target.dataset.modalId);
             }
         });
+
+        // Add repository form - toggle branch field visibility
+        const addRepoForm = document.getElementById("add-repo-form");
+        if (addRepoForm) {
+            const isExistingCheckbox = addRepoForm.querySelector(
+                'input[name="is_existing"]'
+            );
+            const branchInputContainer = addRepoForm.querySelector(
+                ".branch-input-container"
+            );
+
+            if (isExistingCheckbox && branchInputContainer) {
+                isExistingCheckbox.addEventListener("change", (e) => {
+                    branchInputContainer.style.display = e.target.checked
+                        ? "none"
+                        : "";
+                });
+
+                // Set initial state
+                branchInputContainer.style.display = isExistingCheckbox.checked
+                    ? "none"
+                    : "";
+            }
+        }
     }
 
     /**
@@ -575,35 +599,9 @@ class GitManager {
 
         const parsedData = this.parseGitUrl(url.trim());
 
-        if (parsedData) {
-            // Auto-populate path if it's empty or user hasn't manually edited it
-            if (
-                pathInput &&
-                (!pathInput.value || pathInput.dataset.autoFilled === "true")
-            ) {
-                pathInput.value = parsedData.suggestedPath;
-                pathInput.dataset.autoFilled = "true";
-                this.addAutoFilledIndicator(pathInput);
-            }
-
-            // Auto-populate branch if it's empty or user hasn't manually edited it
-            if (
-                branchInput &&
-                (!branchInput.value ||
-                    branchInput.dataset.autoFilled === "true")
-            ) {
-                branchInput.value = parsedData.defaultBranch;
-                branchInput.dataset.autoFilled = "true";
-                this.addAutoFilledIndicator(branchInput);
-            }
-
-            // Show a subtle notification that fields were auto-filled
-            if (parsedData.suggestedPath || parsedData.defaultBranch) {
-                this.showAutoFillNotification(parsedData);
-            }
-        } else {
-            // URL couldn't be parsed - show helpful message
-            this.showUrlParseError(url);
+        // Do not autofill if there's no valid data or if user has already manually edited the path/branch
+        if (!parsedData.name) {
+            return;
         }
     }
 
@@ -4148,48 +4146,49 @@ class GitManager {
         if (!repoId) return;
 
         if (
-            confirm(
+            !confirm(
                 "Are you sure you want to delete this repository? This action cannot be undone."
             )
         ) {
-            const deleteFiles = confirm(
-                "Do you also want to delete the repository files from the disk? This action is also permanent."
-            );
+            return;
+        }
+        const deleteFiles = confirm(
+            "Do you also want to delete the repository files from the disk? This action is also permanent."
+        );
 
-            this.showNotification(
-                WPGitManagerGlobal.translations.deletingRepository,
-                "info"
-            );
-            try {
-                const result = await this.apiCall("git_manager_repo_delete", {
-                    id: repoId,
-                    delete_files: deleteFiles,
-                });
+        this.showNotification(
+            WPGitManagerGlobal.translations.deletingRepository,
+            "info"
+        );
+        try {
+            const result = await this.apiCall("git_manager_repo_delete", {
+                id: repoId,
+                delete_files: deleteFiles,
+            });
 
-                if (result.success) {
-                    this.showNotification(
-                        "Repository deleted successfully",
-                        "success"
-                    );
-                    this.refreshRepositoryList();
-                    const repoDetail = document.getElementById("repo-detail");
-                    if (repoDetail) {
-                        repoDetail.innerHTML =
-                            this.getWelcomeScreenHTML() ||
-                            "<p>Repository deleted. Select another repository.</p>";
-                    }
-                } else {
-                    this.showNotification(
-                        result.data || "Failed to delete repository",
-                        "error"
-                    );
-                }
-            } catch (error) {
+            if (result.success) {
                 this.showNotification(
-                    "Failed to delete repository: " + error.message,
+                    "Repository deleted successfully",
+                    "success"
+                );
+                this.refreshRepositoryList();
+                const repoDetail = document.getElementById("repo-detail");
+                if (repoDetail) {
+                    repoDetail.innerHTML =
+                        this.getWelcomeScreenHTML() ||
+                        "<p>Repository deleted. Select another repository.</p>";
+                }
+            } else {
+                this.showNotification(
+                    result.data || "Failed to delete repository",
                     "error"
                 );
             }
+        } catch (error) {
+            this.showNotification(
+                "Failed to delete repository: " + error.message,
+                "error"
+            );
         }
     }
 
@@ -6759,6 +6758,50 @@ class GitManager {
             );
         } finally {
             this.hideProgress();
+        }
+    }
+
+    validateAddRepositoryForm(form) {
+        const pathInput = form.querySelector('[name="path"]');
+        const remoteInput = form.querySelector('[name="remoteUrl"]');
+        const isExisting = form.querySelector('[name="is_existing"]').checked;
+
+        if (!isExisting && !remoteInput.value.trim()) {
+            this.showNotification("Repository URL is required.", "error");
+            remoteInput.focus();
+            return false;
+        }
+
+        if (!pathInput.value.trim()) {
+            this.showNotification("Local path is required.", "error");
+            pathInput.focus();
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Show a notification that fields were auto-filled.
+     * @param {object} parsedData
+     */
+    showAutoFillNotification(parsedData) {
+        const messages = [];
+
+        if (parsedData.suggestedPath) {
+            messages.push(`Path: ${parsedData.suggestedPath}`);
+        }
+
+        if (parsedData.defaultBranch) {
+            messages.push(`Branch: ${parsedData.defaultBranch}`);
+        }
+
+        if (messages.length > 0) {
+            this.showNotification(
+                `Auto-filled: ${messages.join(", ")}`,
+                "info",
+                { duration: 3000 }
+            );
         }
     }
 }
