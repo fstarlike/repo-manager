@@ -37,16 +37,28 @@ class Repository
 
     public function getDisplayPath(): string
     {
-        $path         = wp_normalize_path($this->path);
-        $real_wp_root = rtrim(wp_normalize_path(realpath(ABSPATH)), '/');
+        $path = wp_normalize_path($this->path);
 
-        if (empty($_SERVER['DOCUMENT_ROOT'])) {
-            return $path;
+        $realAbspath   = rtrim(wp_normalize_path((string) realpath(ABSPATH)), '/');
+        $logicalAbspath = rtrim(wp_normalize_path(ABSPATH), '/');
+
+        $realWpContent = rtrim(wp_normalize_path((string) realpath(WP_CONTENT_DIR)), '/');
+        $logicalWpContent = rtrim(wp_normalize_path(WP_CONTENT_DIR), '/');
+
+        // Prefer mapping by ABSPATH if possible
+        if ($realAbspath && str_starts_with($path, $realAbspath)) {
+            return $logicalAbspath . substr($path, strlen($realAbspath));
         }
-        $doc_root = rtrim(wp_normalize_path($_SERVER['DOCUMENT_ROOT']), '/');
 
-        if (basename($real_wp_root) === basename($doc_root) && str_starts_with($path, $real_wp_root)) {
-            return $doc_root . substr($path, strlen($real_wp_root));
+        // Fallback: map by WP_CONTENT_DIR if ABSPATH didn’t match
+        if ($realWpContent && str_starts_with($path, $realWpContent)) {
+            return $logicalWpContent . substr($path, strlen($realWpContent));
+        }
+
+        // As a last resort, try DOCUMENT_ROOT mapping if it looks equivalent
+        $docRoot = isset($_SERVER['DOCUMENT_ROOT']) ? rtrim(wp_normalize_path($_SERVER['DOCUMENT_ROOT']), '/') : '';
+        if ($docRoot && $realAbspath && basename($docRoot) === basename($realAbspath) && str_starts_with($path, $realAbspath)) {
+            return $docRoot . substr($path, strlen($realAbspath));
         }
 
         return $path;

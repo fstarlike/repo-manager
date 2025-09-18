@@ -146,8 +146,23 @@ class MultiRepoAjax
         $repos = $this->repositoryManager->all();
         foreach ( $repos as $repo ) {
             if ( is_dir( $repo->path ) && SecureGitRunner::isGitRepositoryPath( $repo->path ) ) {
-                $branchResult      = SecureGitRunner::runInDirectory( $repo->path, 'rev-parse --abbrev-ref HEAD' );
+                $branchResult       = SecureGitRunner::runInDirectory( $repo->path, 'rev-parse --abbrev-ref HEAD' );
                 $repo->activeBranch = $branchResult['success'] ? trim( $branchResult['output'] ) : null;
+
+                if ( empty( $repo->activeBranch ) || '0' === $repo->activeBranch ) {
+                    $headFile = rtrim( $repo->path, '\/' ) . '/.git/HEAD';
+                    if ( is_file( $headFile ) && is_readable( $headFile ) ) {
+                        $head = @file_get_contents( $headFile );
+                        if ( false !== $head ) {
+                            $head = trim( (string) $head );
+                            if ( 0 === strpos( $head, 'ref: ' ) ) {
+                                $ref  = trim( substr( $head, 5 ) );
+                                $base = 'refs/heads/';
+                                $repo->activeBranch = ( 0 === strpos( $ref, $base ) ) ? substr( $ref, strlen( $base ) ) : $ref;
+                            }
+                        }
+                    }
+                }
             }
         }
         $data  = array_map(fn ($repo) => $repo->toArray(), $repos);
