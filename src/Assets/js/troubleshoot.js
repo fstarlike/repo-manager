@@ -82,7 +82,9 @@ class GitTroubleshooter {
      * Create the enhanced troubleshooting UI
      */
     createTroubleshootUI() {
-        const outputContainer = document.getElementById("repo-manager-output");
+        const outputContainer =
+            document.getElementById("repo-manager-output") ||
+            document.getElementById("troubleshoot-output");
         if (!outputContainer) return;
 
         // Create the troubleshooting interface
@@ -1478,7 +1480,28 @@ window.GitTroubleshooter = GitTroubleshooter;
 
 // Initialize when DOM is ready
 document.addEventListener("DOMContentLoaded", function () {
-    // Only initialize if we're on the troubleshooting page or in repository context
+    // Bind legacy Run Troubleshooting button if present
+    const runBtn = document.getElementById("run-troubleshoot");
+    if (runBtn) {
+        runBtn.addEventListener("click", function (e) {
+            e.preventDefault();
+            // Show legacy output container if hidden
+            const legacyOut = document.getElementById("troubleshoot-output");
+            if (legacyOut) legacyOut.style.display = "block";
+            // Create and start troubleshooter
+            window.gitTroubleshooter = new GitTroubleshooter();
+            // Use current repo if available
+            const repoId =
+                window.GitManager && window.GitManager.currentRepo
+                    ? window.GitManager.currentRepo
+                    : null;
+            window.gitTroubleshooter.init(repoId).then(() => {
+                window.gitTroubleshooter.startTroubleshooting();
+            });
+        });
+    }
+
+    // Existing auto-init when repo-manager-output exists
     if (document.getElementById("repo-manager-output")) {
         // Check if we're in repository context (GitManager is available and has currentRepo)
         if (window.GitManager && window.GitManager.currentRepo) {

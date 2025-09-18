@@ -1297,7 +1297,7 @@ html[data-theme="dark"] .repo-manager-header {
         }
     }
 
-    &.active {
+    &.active:not(.git-repo-card-missing) {
         border-color: var(--gm-primary);
         background: rgba(37, 99, 235, 0.05);
 
@@ -1579,8 +1579,11 @@ html[data-theme="dark"] {
     font-weight: 600;
 }
 
+.repo-delete-btn,
+.repo-manage-path-btn,
+.repo-troubleshoot-btn,
 .repo-reclone-btn {
-    background: linear-gradient(135deg, var(--gm-primary), #3b82f6) !important;
+    background: linear-gradient(135deg, var(--gm-primary), #f6a53b) !important;
     color: white !important;
     border-radius: var(--gm-radius-md) !important;
     padding: var(--gm-space-2) var(--gm-space-3) !important;
@@ -1616,12 +1619,12 @@ html[data-theme="dark"] {
 
     &:hover {
         background: linear-gradient(
-            135deg,
-            #3b82f6,
-            var(--gm-primary)
+            100deg,
+            var(--gm-primary),
+            #f6a53b
         ) !important;
         color: white !important;
-        transform: translateY(-2px) !important;
+        transform: translateY(-1px) !important;
         box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4) !important;
 
         &::before {
@@ -1632,6 +1635,42 @@ html[data-theme="dark"] {
     &:active {
         transform: translateY(0) !important;
         box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3) !important;
+    }
+}
+
+.repo-troubleshoot-btn {
+    background: linear-gradient(135deg, var(--gm-primary), #3bf691) !important;
+
+    &:hover {
+        background: linear-gradient(
+            100deg,
+            var(--gm-primary),
+            #3bf691
+        ) !important;
+    }
+}
+
+.repo-manage-path-btn {
+    background: linear-gradient(135deg, var(--gm-primary), #9af63b) !important;
+
+    &:hover {
+        background: linear-gradient(
+            100deg,
+            var(--gm-primary),
+            #9af63b
+        ) !important;
+    }
+}
+
+.repo-delete-btn {
+    background: linear-gradient(135deg, var(--gm-error), #ff00de) !important;
+
+    &:hover {
+        background: linear-gradient(
+            100deg,
+            var(--gm-error),
+            #ff00de
+        ) !important;
     }
 }
 
@@ -7048,6 +7087,7 @@ html[data-theme="dark"] .settings-form {
         display: flex;
         gap: var(--gm-space-2);
         flex-wrap: wrap;
+        margin-top: 45px;
     }
 
     .repo-action-btn {
@@ -7055,58 +7095,6 @@ html[data-theme="dark"] .settings-form {
         min-width: 80px;
         font-size: var(--gm-text-sm);
         padding: var(--gm-space-2) var(--gm-space-3);
-    }
-}
-
-.repo-manage-path-btn {
-    background: linear-gradient(135deg, var(--gm-info), #06b6d4) !important;
-    color: white !important;
-    border-radius: var(--gm-radius-md) !important;
-    padding: var(--gm-space-2) var(--gm-space-3) !important;
-    width: auto !important;
-    height: auto !important;
-    font-size: 12px !important;
-    font-weight: 600 !important;
-    display: flex !important;
-    align-items: center;
-    gap: var(--gm-space-2) !important;
-    border: none !important;
-    cursor: pointer !important;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-    box-shadow: 0 2px 8px rgba(6, 182, 212, 0.25) !important;
-    position: relative !important;
-    overflow: hidden !important;
-
-    &::before {
-        content: "" !important;
-        position: absolute !important;
-        top: 0 !important;
-        left: -100% !important;
-        width: 100% !important;
-        height: 100% !important;
-        background: linear-gradient(
-            90deg,
-            transparent,
-            rgba(255, 255, 255, 0.2),
-            transparent
-        ) !important;
-        transition: left 0.5s !important;
-    }
-
-    &:hover {
-        background: linear-gradient(135deg, #06b6d4, var(--gm-info)) !important;
-        color: white !important;
-        transform: translateY(-2px) !important;
-        box-shadow: 0 8px 25px rgba(6, 182, 212, 0.4) !important;
-
-        &::before {
-            left: 100% !important;
-        }
-    }
-
-    &:active {
-        transform: translateY(0) !important;
-        box-shadow: 0 4px 15px rgba(6, 182, 212, 0.3) !important;
     }
 }
 

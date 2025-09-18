@@ -147,10 +147,12 @@ class MultiRepoAjax
         foreach ($repos as $repo) {
             $repo->debug_info             = [];
             $repo->debug_info['storedPath'] = $repo->path;
+            $resolvedPath                    = $this->repositoryManager->resolvePath($repo->path);
+            $repo->debug_info['resolvedPath'] = $resolvedPath;
 
             // Compute derived flags for frontend messaging
-            $repo->folderExists = is_dir($repo->path);
-            $repo->isReadable   = is_readable($repo->path);
+            $repo->folderExists = is_dir($resolvedPath);
+            $repo->isReadable   = is_readable($resolvedPath);
 
             if (! $repo->folderExists) {
                 $repo->debug_info['is_dir_check']      = 'failed';
@@ -164,7 +166,7 @@ class MultiRepoAjax
             $repo->repoType = $this->determineRepositoryType($repo->path);
 
             // Validate git repository (supports .git dir or worktree file)
-            $repo->isValidGit = SecureGitRunner::isGitRepositoryPath($repo->path);
+            $repo->isValidGit = SecureGitRunner::isGitRepositoryPath($resolvedPath);
             if (! $repo->isValidGit) {
                 $repo->debug_info['is_git_repo_check'] = 'failed';
                 $repo->activeBranch                    = null;
@@ -172,14 +174,14 @@ class MultiRepoAjax
             }
             $repo->debug_info['is_git_repo_check'] = 'passed';
 
-            $branchResult       = SecureGitRunner::runInDirectory($repo->path, 'rev-parse --abbrev-ref HEAD');
+            $branchResult       = SecureGitRunner::runInDirectory($resolvedPath, 'rev-parse --abbrev-ref HEAD');
             $repo->activeBranch = $branchResult['success'] ? trim($branchResult['output']) : null;
             $repo->debug_info['git_command_success'] = $branchResult['success'];
             $repo->debug_info['git_command_output'] = $branchResult['output'] ?? 'empty';
 
 
             if (empty($repo->activeBranch) || '0' === $repo->activeBranch) {
-                $headFile = rtrim($repo->path, '\/') . '/.git/HEAD';
+                $headFile = rtrim($resolvedPath, '\/') . '/.git/HEAD';
                 $repo->debug_info['head_file_path']    = $headFile;
                 $repo->debug_info['head_file_exists']  = file_exists($headFile);
                 $repo->debug_info['head_file_readable'] = is_readable($headFile);
@@ -1205,11 +1207,15 @@ class MultiRepoAjax
 
         $id   = $this->getRepositoryId();
         $repo = $this->repositoryManager->get($id);
-        if (! $repo || ! is_dir($repo->path)) {
+        if (! $repo) {
             wp_send_json_error('Invalid repository');
         }
 
-        $path = $repo->path;
+        // Always resolve relative paths to absolute paths before checks
+        $path = $this->repositoryManager->resolvePath($repo->path);
+        if (! is_dir($path)) {
+            wp_send_json_error('Invalid repository path: ' . esc_html((string) $repo->path) . ' (resolved to ' . esc_html((string) $path) . '). Please verify the path in Repo Manager → Settings.');
+        }
         $html = '';
         // 1) Git binary
         $gitVersionRes = SecureGitRunner::gitVersion();
