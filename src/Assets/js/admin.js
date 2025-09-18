@@ -4243,56 +4243,72 @@ class GitManager {
      */
     handleUncommittedChangesError(repoId, branchName, errorMessage) {
         const modalHTML = `
-            <div class="git-modal uncommitted-changes-modal">
+            <div class="git-modal-content uncommitted-changes-modal">
                 <div class="git-modal-header">
                     <div class="modal-header-content">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="modal-icon warning">
-                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                            <line x1="12" y1="9" x2="12" y2="13"/>
-                            <line x1="12" y1="17" x2="12.01" y2="17"/>
-                        </svg>
+                        <div class="modal-icon-wrapper warning">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                <line x1="12" y1="9" x2="12" y2="13"/>
+                                <line x1="12" y1="17" x2="12.01" y2="17"/>
+                            </svg>
+                        </div>
                         <h3>Uncommitted Changes Detected</h3>
                     </div>
                     <button class="git-modal-close" type="button">&times;</button>
                 </div>
                 <div class="git-modal-body">
-                    <div class="modal-message">
-                        <p>Cannot checkout to <strong class="branch-highlight">${this.escapeHtml(
-                            branchName
-                        )}</strong> because you have uncommitted changes.</p>
-                        <p class="modal-subtitle">Choose how you'd like to handle your changes:</p>
+                    <div class="modal-alert">
+                        <div class="alert-content">
+                            <p class="alert-message">
+                                Cannot checkout to <strong class="branch-highlight">${this.escapeHtml(
+                                    branchName
+                                )}</strong> because you have uncommitted changes.
+                            </p>
+                            <p class="alert-subtitle">Choose how you'd like to handle your changes:</p>
+                        </div>
                     </div>
-                    <div class="checkout-options">
-                        <button class="git-action-btn git-primary-btn" data-action="stash-and-checkout" data-repo-id="${repoId}" data-branch="${this.escapeHtml(
+                    <div class="action-options">
+                        <div class="option-item">
+                            <button class="git-action-btn git-primary-btn option-button" data-action="stash-and-checkout" data-repo-id="${repoId}" data-branch="${this.escapeHtml(
             branchName
         )}">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
-                            </svg>
-                            <div class="button-content">
-                                <span class="button-title">Stash Changes & Checkout</span>
-                                <span class="button-description">Save changes temporarily and switch branch</span>
-                            </div>
-                        </button>
-                        <button class="git-action-btn git-secondary-btn" data-action="force-checkout" data-repo-id="${repoId}" data-branch="${this.escapeHtml(
+                                <div class="option-icon">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
+                                    </svg>
+                                </div>
+                                <div class="option-content">
+                                    <span class="option-title">Stash Changes & Checkout</span>
+                                    <span class="option-description">Save changes temporarily and switch branch</span>
+                                </div>
+                            </button>
+                        </div>
+                        <div class="option-item">
+                            <button class="git-action-btn git-secondary-btn option-button" data-action="force-checkout" data-repo-id="${repoId}" data-branch="${this.escapeHtml(
             branchName
         )}">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                            </svg>
-                            <div class="button-content">
-                                <span class="button-title">Force Checkout (Discard Changes)</span>
-                                <span class="button-description">⚠️ Permanently discard all uncommitted changes</span>
-                            </div>
-                        </button>
-                        <button class="git-action-btn git-tertiary-btn" data-action="cancel">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M18 6L6 18"/>
-                                <path d="M6 6l12 12"/>
-                            </svg>
-                            Cancel
-                        </button>
+                                <div class="option-icon">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                                    </svg>
+                                </div>
+                                <div class="option-content">
+                                    <span class="option-title">Force Checkout (Discard Changes)</span>
+                                    <span class="option-description">⚠️ Permanently discard all uncommitted changes</span>
+                                </div>
+                            </button>
+                        </div>
                     </div>
+                </div>
+                <div class="git-modal-footer">
+                    <button class="git-action-btn git-tertiary-btn" data-action="cancel">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M18 6L6 18"/>
+                            <path d="M6 6l12 12"/>
+                        </svg>
+                        Cancel
+                    </button>
                 </div>
             </div>
         `;
