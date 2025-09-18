@@ -1889,6 +1889,12 @@ class MultiRepoAjax
      */
     private function getCurrentBranch(string $repoPath): string
     {
+        // Git v2.22+ has a much more reliable way to get the current branch
+        $branchResult = GitCommandRunner::run($repoPath, 'branch --show-current');
+        if ($branchResult['success'] && !in_array(trim($branchResult['output']), ['', '0'], true)) {
+            return trim($branchResult['output']);
+        }
+
         // Try the fastest method first
         $branchResult = GitCommandRunner::run($repoPath, 'rev-parse --abbrev-ref HEAD');
         if ($branchResult['success'] && !in_array(trim($branchResult['output']), ['', '0'], true)) {
