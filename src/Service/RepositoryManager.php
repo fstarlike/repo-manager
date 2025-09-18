@@ -54,7 +54,7 @@ class RepositoryManager
         $unique_paths = [];
 
         echo '<pre>';
-        var_dump($stored);
+        var_dump(ABSPATH);
         echo '</pre>';
         die;
         foreach ($stored as $item) {
