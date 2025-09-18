@@ -70,6 +70,7 @@ class Repository
             'id'           => $this->id,
             'name'         => $this->name,
             'path'         => $this->getDisplayPath(),
+            'storedPath'   => wp_normalize_path($this->path),
             'remoteUrl'    => $this->remoteUrl,
             'authType'     => $this->authType,
             'meta'         => $this->meta,
