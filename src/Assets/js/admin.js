@@ -1724,14 +1724,24 @@ class GitManager {
      * Handle Add Repository Form Submission
      */
     async handleAddRepositorySubmit(form) {
+        const isExisting = form.querySelector('[name="existing_repo"]').checked;
+        const action = isExisting
+            ? "git_manager_add_existing_repo"
+            : "git_manager_add_repository";
+
         const formData = new FormData(form);
-        const data = Object.fromEntries(formData.entries());
+        formData.append("action", action);
+        formData.append("nonce", gitManagerAjax.nonce);
 
         if (!this.validateAddRepositoryForm(form)) {
             return;
         }
 
-        const repoName = data.repo_name;
+        const repoName = form.querySelector('[name="repo_name"]').value.trim();
+        const repoPath = form.querySelector('[name="repo_path"]').value.trim();
+        const authType = form.querySelector(
+            'input[name="auth_type"]:checked'
+        ).value;
 
         // Show loading state
         const submitBtn = form.querySelector('button[type="submit"]');
@@ -1747,26 +1757,31 @@ class GitManager {
             const ajaxData = {
                 action: gitManagerAjax.actions.add_repository,
                 nonce: gitManagerAjax.nonce,
-                name: data.repo_name,
-                path: data.repo_path,
-                authType: data.auth_type,
+                name: repoName,
+                path: repoPath,
+                authType: authType,
             };
 
             // Handle authentication
-            const isPrivateRepo = data.private_repo === "on";
-            const authType = data.auth_type || "ssh";
+            const isPrivateRepo = form.querySelector(
+                '[name="private_repo"]'
+            ).checked;
+            const authType = authType || "ssh";
 
             if (isPrivateRepo) {
                 if (authType === "ssh") {
-                    const privateKey = data.private_key;
+                    const privateKey = form.querySelector(
+                        '[name="private_key"]'
+                    ).value;
                     if (!privateKey || !privateKey.trim()) {
                         throw new Error(
                             "SSH private key is required for private repositories"
                         );
                     }
                 } else if (authType === "https") {
-                    const username = data.username;
-                    const token = data.token;
+                    const username =
+                        form.querySelector('[name="username"]').value;
+                    const token = form.querySelector('[name="token"]').value;
 
                     if (!username || !token) {
                         throw new Error(

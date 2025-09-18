@@ -431,249 +431,61 @@ class MultiRepoAjax
     {
         check_ajax_referer('git_manager_action', 'nonce');
 
-        $data = [
-            'name'      => sanitize_text_field(wp_unslash($_POST['name'] ?? '')),
-            'path'      => sanitize_text_field(wp_unslash($_POST['path'] ?? '')),
-            'remoteUrl' => sanitize_text_field(wp_unslash($_POST['remoteUrl'] ?? '')),
-            'authType'  => sanitize_text_field(wp_unslash($_POST['authType'] ?? 'ssh')),
-        ];
-        if (! $data['path']) {
+        $name      = sanitize_text_field(wp_unslash($_POST['repo_name'] ?? ''));
+        $path      = sanitize_text_field(wp_unslash($_POST['repo_path'] ?? ''));
+        $remoteUrl = sanitize_text_field(wp_unslash($_POST['repo_url'] ?? ''));
+
+        if (!$path) {
             wp_send_json_error('Path is required');
         }
 
-        // Construct absolute path if relative path is provided
-        $absolutePath = $data['path'];
-
-        // Check if path is relative to WordPress root (starts with /wp-content, /wp-admin, etc.)
-        $wpRelativePaths = ['/wp-content', '/wp-admin', '/wp-includes', '/wp-json'];
-        $isWpRelative    = false;
-        foreach ($wpRelativePaths as $wpPath) {
-            if (0 === strpos($data['path'], $wpPath)) {
-                $isWpRelative = true;
-                break;
-            }
+        if (!$remoteUrl) {
+            wp_send_json_error('Repository URL is required');
         }
 
-        if (! path_is_absolute($data['path']) || $isWpRelative) {
-            $absolutePath = ABSPATH . ltrim($data['path'], '/');
+        $absolutePath = $this->repositoryManager->resolvePath($path);
 
+        if (!$this->repositoryManager->validatePath($absolutePath)) {
+            wp_send_json_error('Invalid or forbidden path');
         }
 
-        if (! $this->repositoryManager->validatePath($absolutePath)) {
-            wp_send_json_error('Invalid path');
+        $parentDir = dirname($absolutePath);
+        if (!is_dir($parentDir) && !wp_mkdir_p($parentDir)) {
+            wp_send_json_error('Failed to create parent directory: ' . $parentDir);
         }
 
-        // Check if this is an existing repository
-        $isExistingRepo = isset($_POST['existing_repo']) && '1' === $_POST['existing_repo'];
-
-        // For new repositories, ensure the parent directory exists
-        if (! $isExistingRepo) {
-            $parentDir = dirname($absolutePath);
-            if (!is_dir($parentDir) && ! wp_mkdir_p($parentDir)) {
-                wp_send_json_error('Failed to create parent directory: ' . $parentDir);
-            }
-        }
-
-        if ($isExistingRepo) {
-            // For existing repositories, validate that it's actually a Git repository
-            if (! \WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($absolutePath)) {
-                wp_send_json_error('Selected path is not a Git repository');
-            }
-
-            $data['path'] = realpath($absolutePath);
-            // If name not provided for existing repo, infer from path
-            if (empty($data['name'])) {
-                $data['name'] = basename($data['path']);
-            }
-        } else {
-            // For new repositories, we need to clone
-            $remoteUrl = $data['remoteUrl'];
-            if (! $remoteUrl) {
-                wp_send_json_error('Repository URL is required for new repositories');
-            }
-
-            // Convert SSH URL to HTTPS if HTTPS authentication is provided or if SSH key is missing
-            $authType   = sanitize_text_field(wp_unslash($_POST['authType'] ?? 'ssh'));
-            $privateKey = empty($_POST['private_key']) ? '' : sanitize_textarea_field(wp_unslash($_POST['private_key']));
-
-            if (0 === strpos($remoteUrl, 'git@') && ('https' === $authType || 'ssh' === $authType && empty($privateKey))) {
-                // Convert git@github.com:user/repo.git to https://github.com/user/repo.git
-                $remoteUrl = preg_replace('/^git@([^:]+):([^\/]+)\/([^\/]+?)(?:\.git)?$/', 'https://$1/$2/$3.git', $remoteUrl);
-                // If we're converting to HTTPS but authType is still SSH, switch to HTTPS
-                if ('ssh' === $authType && empty($privateKey)) {
-                    $authType = 'https';
-                }
-            }
-
-            // Extract repository name from URL if not provided
-            if (! $data['name']) {
-                $urlParts     = explode('/', $remoteUrl);
-                $data['name'] = basename($urlParts[count($urlParts) - 1], '.git');
-            }
-
-            // Add repository name to the target path
-            $absolutePath = rtrim($absolutePath, '/\\') . DIRECTORY_SEPARATOR . $data['name'];
-
-            // Pre-flight check: ensure destination does not exist or is an empty directory
-            if (is_dir($absolutePath) && count(array_diff(scandir($absolutePath), ['.', '..'])) > 0) {
-                wp_send_json_error('Destination path already exists and is not an empty directory. Please choose a different location or clear the target folder.');
-            }
-
-            // Validate the final target path
-            if (! $this->repositoryManager->validatePath($absolutePath)) {
-                wp_send_json_error('Invalid target path');
-            }
-
-            // Clone the repository
-            $authType   = sanitize_text_field(wp_unslash($_POST['authType'] ?? 'ssh'));
-            $username   = sanitize_text_field(wp_unslash($_POST['username'] ?? ''));
-            $token      = sanitize_text_field(wp_unslash($_POST['token'] ?? ''));
-            $privateKey = empty($_POST['private_key']) ? '' : sanitize_textarea_field(wp_unslash($_POST['private_key']));
-
-            // Prepare environment for Git
-            $home               = getenv('HOME') ?: (getenv('USERPROFILE') ?: sys_get_temp_dir());
-            $homeClean          = str_replace('"', '', $home);
-            $env                = [];
-            $remoteUrlFormatted = $remoteUrl;
-
-            if ('https' === $authType && $username && $token) {
-                $remoteUrlFormatted = preg_replace('#^https://#', 'https://' . rawurlencode($username) . ':' . rawurlencode($token) . '@', $remoteUrl);
-            }
-
-            if ('WIN' === strtoupper(substr(PHP_OS, 0, 3))) {
-                $envStr = '';
-                foreach ($env as $key => $value) {
-                    $envStr .= sprintf('set "%s=%s" && ', $key, $value);
-                }
-
-                $cmd = $envStr . 'set "HOME=' . $homeClean . '" && git clone ' . escapeshellarg($remoteUrlFormatted) . ' ' . escapeshellarg($absolutePath) . ' 2>&1';
-            } else {
-                $envStr = '';
-                foreach ($env as $key => $value) {
-                    $envStr .= $key . '=' . escapeshellarg($value) . ' ';
-                }
-
-                $cmd = $envStr . 'HOME=' . escapeshellarg($home) . ' git clone ' . escapeshellarg($remoteUrlFormatted) . ' ' . escapeshellarg($absolutePath) . ' 2>&1';
-            }
-
-            // If SSH with private key is provided, create a temporary wrapper
-            if ('ssh' === $authType && $privateKey) {
-                $tmpDir = wp_upload_dir(null, false)['basedir'] . '/repo-manager-keys';
-                if (! is_dir($tmpDir)) {
-                    @wp_mkdir_p($tmpDir);
-                }
-
-                $keyPath = $tmpDir . '/key_' . md5($privateKey) . '.pem';
-                if (! file_exists($keyPath)) {
-                    file_put_contents($keyPath, $privateKey);
-                    // Use WP_Filesystem instead of chmod
-                    global $wp_filesystem;
-                    if (empty($wp_filesystem)) {
-                        require_once(ABSPATH . '/wp-admin/includes/file.php');
-                        WP_Filesystem();
-                    }
-
-                    if ($wp_filesystem) {
-                        $wp_filesystem->chmod($keyPath, 0600);
-                    }
-                }
-
-                $isWin   = 'WIN' === strtoupper(substr(PHP_OS, 0, 3));
-                $wrapper = $tmpDir . '/ssh_wrapper_' . md5($keyPath) . ($isWin ? '.bat' : '.sh');
-                if ($isWin) {
-                    if (! file_exists($wrapper)) {
-                        file_put_contents($wrapper, "@echo off\nssh -i \"{$keyPath}\" -o StrictHostKeyChecking=no %*\n");
-                    }
-
-                    $cmd = 'set "GIT_SSH=' . $wrapper . '" && ' . $cmd;
-                } else {
-                    if (! file_exists($wrapper)) {
-                        file_put_contents($wrapper, "#!/bin/sh\nexec ssh -i '{$keyPath}' -o StrictHostKeyChecking=no \"$@\"\n");
-                        // Use WP_Filesystem instead of chmod
-                        global $wp_filesystem;
-                        if (empty($wp_filesystem)) {
-                            require_once(ABSPATH . '/wp-admin/includes/file.php');
-                            WP_Filesystem();
-                        }
-
-                        if ($wp_filesystem) {
-                            $wp_filesystem->chmod($wrapper, 0700);
-                        }
-                    }
-
-                    $cmd = 'GIT_SSH=' . escapeshellarg($wrapper) . ' ' . $cmd;
-                }
-            }
-
-            $cloneResult = SecureGitRunner::cloneRepository($remoteUrl, $absolutePath, ['ssh_key' => $privateKey ?: null]);
-            if (! $cloneResult['success']) {
-                wp_send_json_error($cloneResult['output'] ?: 'Clone failed - no .git directory found');
-            }
-
-            // Handle branch checkout if specified
-            $branch = sanitize_text_field(wp_unslash($_POST['repo_branch'] ?? ''));
-            if ($branch && 'main' !== $branch && 'master' !== $branch) {
-                // Check if the branch exists remotely
-                $branchCheckCmd = 'cd ' . escapeshellarg($absolutePath) . ' && git ls-remote --heads origin ' . escapeshellarg($branch);
-                if (! GitManager::are_commands_enabled()) {
-                    wp_send_json_error('Command execution is disabled');
-                }
-
-                $branchCheck  = SecureGitRunner::runInDirectory($absolutePath, 'ls-remote --heads origin ' . escapeshellarg($branch));
-                $branchExists = $branchCheck['success'] && !empty($branchCheck['output']);
-
-                if ($branchExists) {
-                    // Branch exists remotely, checkout
-                    $checkoutCmd = 'cd ' . escapeshellarg($absolutePath) . ' && git checkout ' . escapeshellarg($branch);
-                    if (! GitManager::are_commands_enabled()) {
-                        wp_send_json_error('Command execution is disabled');
-                    }
-
-                    $checkoutResult = SecureGitRunner::runInDirectory($absolutePath, 'checkout ' . escapeshellarg($branch));
-                    $checkoutOut    = $checkoutResult['output'] ?? '';
-                } else {
-                    // Try to create the branch
-                    $createCmd = 'cd ' . escapeshellarg($absolutePath) . ' && git checkout -b ' . escapeshellarg($branch);
-                    if (! GitManager::are_commands_enabled()) {
-                        wp_send_json_error('Command execution is disabled');
-                    }
-
-                    $createResult = SecureGitRunner::runInDirectory($absolutePath, 'checkout -b ' . escapeshellarg($branch));
-                    $createOut    = $createResult['output'] ?? '';
-                }
-            }
-
-            $data['path']      = $absolutePath;
-            $data['remoteUrl'] = $remoteUrl;
-        }
-
-        $repo = $this->repositoryManager->add($data);
-
-        // Handle credentials if provided
-        $authType   = sanitize_text_field(wp_unslash($_POST['authType'] ?? 'ssh'));
+        $authType   = sanitize_text_field(wp_unslash($_POST['auth_type'] ?? 'ssh'));
+        $privateKey = empty($_POST['private_key']) ? '' : sanitize_textarea_field(wp_unslash($_POST['private_key']));
         $username   = sanitize_text_field(wp_unslash($_POST['username'] ?? ''));
         $token      = sanitize_text_field(wp_unslash($_POST['token'] ?? ''));
-        $privateKey = empty($_POST['private_key']) ? '' : sanitize_textarea_field(wp_unslash($_POST['private_key']));
 
-        if ('https' === $authType && ($username || $token)) {
-            $cred = ['authType' => $authType];
-            if ($username) {
-                $cred['username'] = $username;
-            }
+        $opts = [
+            'auth_type'   => $authType,
+            'ssh_key'     => $privateKey,
+            'username'    => $username,
+            'https_token' => $token,
+        ];
 
-            if ($token) {
-                $cred['token'] = $token;
-            }
+        $cloneResult = SecureGitRunner::cloneRepository($remoteUrl, $absolutePath, $opts);
 
-            if (count($cred) > 1) {
-                CredentialStore::set($repo->id, $cred);
-            }
-        } elseif ('ssh' === $authType && $privateKey) {
-            $cred = ['authType' => $authType, 'private_key' => $privateKey];
-            CredentialStore::set($repo->id, $cred);
+        if (!$cloneResult['success']) {
+            wp_send_json_error('Failed to clone repository: ' . $cloneResult['output']);
         }
 
-        wp_send_json_success($repo->toArray());
+        $repoData = [
+            'name'      => $name ?: basename($absolutePath),
+            'path'      => $absolutePath,
+            'remoteUrl' => $remoteUrl,
+            'authType'  => $authType,
+        ];
+
+        $repo = $this->repositoryManager->add($repoData);
+        $this->setActive($repo->id);
+
+        wp_send_json_success([
+            'message' => 'Repository added and cloned successfully',
+            'repo'    => $repo->toArray(),
+        ]);
     }
 
     public function update(): void
@@ -938,59 +750,39 @@ class MultiRepoAjax
     /** Add existing repository (no clone) */
     public function addExisting(): void
     {
-        $this->ensureAllowed();
-
         check_ajax_referer('git_manager_action', 'nonce');
 
-        $name       = sanitize_text_field(wp_unslash($_POST['name'] ?? ''));
-        $path       = sanitize_text_field(wp_unslash($_POST['path'] ?? ''));
-        $remoteUrl  = sanitize_text_field(wp_unslash($_POST['remoteUrl'] ?? ''));
-        $authType   = sanitize_text_field(wp_unslash($_POST['authType'] ?? 'ssh'));
-        $username   = sanitize_text_field(wp_unslash($_POST['username'] ?? ''));
-        $token      = sanitize_text_field(wp_unslash($_POST['token'] ?? ''));
-        $privateKey = empty($_POST['private_key']) ? '' : sanitize_textarea_field(wp_unslash($_POST['private_key']));
-        if (! $name || ! $path) {
-            wp_send_json_error('Name and path are required');
+        $path = sanitize_text_field(wp_unslash($_POST['repo_path'] ?? ''));
+        $name = sanitize_text_field(wp_unslash($_POST['repo_name'] ?? ''));
+
+        if (!$path) {
+            wp_send_json_error('Path is required');
         }
 
-        // Construct absolute path if relative path is provided
-        $absolutePath = $path;
-        if (! path_is_absolute($path)) {
-            $absolutePath = ABSPATH . ltrim($path, '/');
+        $absolutePath = $this->repositoryManager->resolvePath($path);
+
+        if (!$this->repositoryManager->validatePath($absolutePath)) {
+            wp_send_json_error('Invalid or forbidden path');
         }
 
-        if (! $this->repositoryManager->validatePath($absolutePath)) {
-            wp_send_json_error('Invalid path');
+        if (!SecureGitRunner::isGitRepositoryPath($absolutePath)) {
+            wp_send_json_error('The specified path is not a valid Git repository.');
         }
 
-        if (! \WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($absolutePath)) {
-            wp_send_json_error('Selected path is not a Git repository');
-        }
+        $repoData = [
+            'name'      => $name ?: basename($absolutePath),
+            'path'      => $absolutePath,
+            'remoteUrl' => '', // Will be fetched later if needed
+            'authType'  => 'none',
+        ];
 
-        $repo = $this->repositoryManager->add([
-            'name'      => $name,
-            'path'      => realpath($absolutePath),
-            'remoteUrl' => $remoteUrl ?: null,
-            'authType'  => $authType,
+        $repo = $this->repositoryManager->add($repoData);
+        $this->setActive($repo->id);
+
+        wp_send_json_success([
+            'message' => 'Existing repository added successfully',
+            'repo'    => $repo->toArray(),
         ]);
-        $cred = ['authType' => $authType];
-        if ('https' === $authType) {
-            if ($username) {
-                $cred['username'] = $username;
-            } if ($token) {
-                $cred['token'] = $token;
-            }
-        }
-
-        if ('ssh' === $authType && $privateKey) {
-            $cred['private_key'] = $privateKey;
-        }
-
-        if (count($cred) > 1) {
-            CredentialStore::set($repo->id, $cred);
-        }
-
-        wp_send_json_success($repo->toArray());
     }
 
     public function gitOp(): void
