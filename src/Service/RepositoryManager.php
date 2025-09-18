@@ -50,22 +50,36 @@ class RepositoryManager
             $stored = [];
         }
 
-        $this->cache = [];
-        $unique_paths = [];
+        $original_count = count($stored);
+        $this->cache    = [];
+        $unique_paths   = [];
+        $paths_were_trimmed = false;
 
         foreach ($stored as $item) {
             if (is_array($item)) {
                 $repo = new Repository($item);
                 if ('' !== $repo->path && '0' !== $repo->path) {
                     // Prevent adding duplicates based on path
+                    $normalized_path = rtrim($repo->path, '/\\');
+
+                    if ($repo->path !== $normalized_path) {
+                        $paths_were_trimmed = true;
+                        $repo->path = $normalized_path;
+                    }
+
                     if (isset($unique_paths[$repo->path])) {
                         continue;
                     }
 
-                    $this->cache[$repo->id] = $repo;
+                    $this->cache[$repo->id]   = $repo;
                     $unique_paths[$repo->path] = true;
                 }
             }
+        }
+
+        // If we removed duplicates or trimmed paths, we should persist the cleaned data.
+        if ($original_count !== count($this->cache) || $paths_were_trimmed) {
+            $this->persist();
         }
     }
 
@@ -118,7 +132,13 @@ class RepositoryManager
 
         // Convert path to relative before creating repository
         if (isset($data['path'])) {
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log("Repo Manager add: Original path from data: '{$data['path']}'");
+            }
             $data['path'] = $this->makeRelativePath($data['path']);
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log("Repo Manager add: Path after makeRelativePath: '{$data['path']}'");
+            }
         }
 
         $repo                   = new Repository($data);
@@ -177,21 +197,37 @@ class RepositoryManager
      */
     public function makeRelativePath(string $absolutePath): string
     {
+        $originalPath = $absolutePath;
         $absolutePath = wp_normalize_path(trim($absolutePath, " \t\n\r\0\x0B\"'"));
         $wpRoot = wp_normalize_path(rtrim(ABSPATH, '/'));
 
+        // Debug logging
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log("Repo Manager makeRelativePath: Original='{$originalPath}', Normalized='{$absolutePath}', WP_Root='{$wpRoot}'");
+        }
+
         // If the path is already relative, return it as-is
         if (!path_is_absolute($absolutePath)) {
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log("Repo Manager makeRelativePath: Path is already relative, returning: '{$absolutePath}'");
+            }
             return ltrim($absolutePath, '/');
         }
 
         // If path starts with WordPress root, make it relative
         if (0 === strpos($absolutePath, $wpRoot)) {
             $relativePath = substr($absolutePath, strlen($wpRoot));
-            return ltrim($relativePath, '/');
+            $result = ltrim($relativePath, '/');
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log("Repo Manager makeRelativePath: Converting to relative: '{$absolutePath}' -> '{$result}'");
+            }
+            return $result;
         }
 
         // If path is outside WordPress root, return as absolute path
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log("Repo Manager makeRelativePath: Path is outside WordPress root, keeping absolute: '{$absolutePath}'");
+        }
         return $absolutePath;
     }
 

@@ -46,6 +46,7 @@ class RepositoryController
         add_action('wp_ajax_git_manager_repo_set_active', [$this, 'setActive']);
         add_action('wp_ajax_git_manager_repo_add_existing', [$this, 'addExisting']);
         add_action('wp_ajax_git_manager_add_existing_repo', [$this, 'addExisting']);
+        add_action('wp_ajax_git_manager_migrate_paths', [$this, 'migratePaths']);
     }
 
     /**
@@ -505,5 +506,36 @@ class RepositoryController
         }
 
         return $details;
+    }
+
+    /**
+     * Migrate existing absolute paths to relative paths
+     */
+    public function migratePaths(): void
+    {
+        check_ajax_referer('git_manager_action', 'nonce');
+        $this->ensureCapabilities();
+
+        if (!$this->rateLimiter->checkAjaxRateLimit('git_manager_migrate_paths')) {
+            wp_send_json_error('Rate limit exceeded');
+        }
+
+        try {
+            $migrated = $this->repositoryManager->migrateAbsolutePathsToRelative();
+
+            $this->auditLogger->log('info', 'paths_migrated', [
+                'migrated_count' => $migrated,
+            ]);
+
+            wp_send_json_success([
+                'message' => sprintf('Successfully migrated %d repository paths to relative paths', $migrated),
+                'migrated_count' => $migrated,
+            ]);
+        } catch (\Exception $exception) {
+            $this->auditLogger->log('error', 'paths_migration_failed', [
+                'error' => $exception->getMessage(),
+            ]);
+            wp_send_json_error('Failed to migrate paths: ' . $exception->getMessage());
+        }
     }
 }

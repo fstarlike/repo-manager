@@ -43,7 +43,6 @@ class GitController
         add_action('wp_ajax_git_manager_repo_log', [$this, 'detailedLog']);
         add_action('wp_ajax_git_manager_detailed_log', [$this, 'detailedLog']);
         add_action('wp_ajax_git_manager_repo_create_branch', [$this, 'createBranch']);
-        add_action('wp_ajax_git_manager_repo_delete_branch', [$this, 'deleteBranch']);
         add_action('wp_ajax_git_manager_repo_stash', [$this, 'stash']);
         add_action('wp_ajax_git_manager_repo_stash_pop', [$this, 'stashPop']);
         add_action('wp_ajax_git_manager_repo_checkout', [$this, 'checkout']);
@@ -333,51 +332,6 @@ class GitController
         }
     }
 
-    /**
-     * Delete branch
-     */
-    public function deleteBranch(): void
-    {
-        $this->ensureCapabilities();
-
-        if (!$this->rateLimiter->checkAjaxRateLimit('git_manager_repo_delete_branch')) {
-            wp_send_json_error('Rate limit exceeded');
-        }
-
-        try {
-            $repoId     = $this->getRepositoryId();
-            $branchName = sanitize_text_field(wp_unslash($_POST['branch_name'] ?? ''));
-            $force      = !empty($_POST['force']);
-
-            if (empty($branchName)) {
-                throw new \Exception('Branch name is required');
-            }
-
-            $repository = $this->repositoryManager->get($repoId);
-            if (!$repository instanceof Repository) {
-                throw new \Exception('Repository not found');
-            }
-
-            $resolvedPath = $this->repositoryManager->resolvePath($repository->path);
-            $args   = $force ? ['-D', $branchName] : ['-d', $branchName];
-            $result = $this->gitRunner->run($resolvedPath, 'branch', $args);
-
-            $this->auditLogger->logGitCommand('branch', $resolvedPath, $result['success'], $result['output'] ?? null);
-
-            if ($result['success']) {
-                wp_send_json_success($result);
-            } else {
-                wp_send_json_error($result['output'] ?? 'Branch deletion failed');
-            }
-        } catch (\Exception $exception) {
-            $this->auditLogger->log('error', 'git_branch_delete_failed', [
-                'error'       => $exception->getMessage(),
-                'repo_id'     => $repoId ?? null,
-                'branch_name' => $branchName ?? null,
-            ]);
-            wp_send_json_error($exception->getMessage());
-        }
-    }
 
     /**
      * Stash changes

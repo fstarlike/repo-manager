@@ -2,6 +2,7 @@
 
 use WPGitManager\Admin\GitManager;
 use WPGitManager\Controller\MultiRepoAjax;
+use WPGitManager\Controller\RepositoryController;
 use WPGitManager\Infrastructure\Autoloader;
 use WPGitManager\Service\AuditLogger;
 use WPGitManager\Service\CredentialStore;
@@ -192,15 +193,19 @@ add_action('admin_menu', function () {
 // No need to manually call load_plugin_textdomain() since WordPress 4.6
 
 add_action('init', function () {
-    if (is_admin() && class_exists(MultiRepoAjax::class)) {
-        $rateLimiter     = RateLimiter::instance();
-        $auditLogger     = AuditLogger::instance();
-        $credentialStore = new CredentialStore();
-        $systemStatus    = new SystemStatus();
-        $multiRepoAjax   = new MultiRepoAjax($rateLimiter, $auditLogger, $credentialStore, $systemStatus);
+    if (is_admin()) {
+        // Register MultiRepoAjax
+        if (class_exists(MultiRepoAjax::class)) {
+            $rateLimiter     = RateLimiter::instance();
+            $auditLogger     = AuditLogger::instance();
+            $credentialStore = new CredentialStore();
+            $systemStatus    = new SystemStatus();
+            $multiRepoAjax   = new MultiRepoAjax($rateLimiter, $auditLogger, $credentialStore, $systemStatus);
+        }
 
-        // GitController is not needed as MultiRepoAjax handles all AJAX actions
-        // This prevents duplicate registrations and conflicts
+        // Register RepositoryController for additional endpoints like migration
+        $repositoryController = new RepositoryController();
+        $repositoryController->register();
     }
 });
 

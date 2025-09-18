@@ -282,6 +282,52 @@ class Settings
                         </div>
 
 
+                        <!-- Path Migration Section -->
+                        <div class="git-settings-card">
+                            <div class="git-settings-card-header">
+                                <div class="git-settings-card-icon">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">
+                                        <path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2z"/>
+                                        <path d="M8 21v-4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v4"/>
+                                        <path d="M3 10l18 0"/>
+                                        <path d="M8 6l0-1a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2l0 1"/>
+                                    </svg>
+                                </div>
+                                <div class="git-settings-card-title">
+                                    <h3><?php esc_html_e('Path Migration', 'repo-manager'); ?></h3>
+                                    <p><?php esc_html_e('Convert existing absolute repository paths to relative paths for better portability.', 'repo-manager'); ?></p>
+                                </div>
+                            </div>
+
+                            <div class="git-settings-card-body">
+                                <div class="git-migration-info">
+                                    <div class="git-info-icon">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+                                            <circle cx="12" cy="12" r="10"/>
+                                            <line x1="12" y1="16" x2="12" y2="12"/>
+                                            <line x1="12" y1="8" x2="12.01" y2="8"/>
+                                        </svg>
+                                    </div>
+                                    <div class="git-info-text">
+                                        <strong><?php esc_html_e('What does this do?', 'repo-manager'); ?></strong><br>
+                                        <?php esc_html_e('This will convert repository paths from absolute (e.g., C:/full/path/to/repo) to relative paths (e.g., wp-content/themes/my-theme). Relative paths make your repositories more portable between different environments.', 'repo-manager'); ?>
+                                    </div>
+                                </div>
+
+                                <div class="git-migration-actions">
+                                    <button type="button" id="migrate-paths-btn" class="git-action-btn git-secondary-btn">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+                                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                            <polyline points="7,10 12,15 17,10"/>
+                                            <line x1="12" y1="15" x2="12" y2="3"/>
+                                        </svg>
+                                        <?php esc_html_e('Migrate Repository Paths', 'repo-manager'); ?>
+                                    </button>
+                                    <div id="migration-status" class="git-migration-status" style="display: none;"></div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Save Settings Section -->
                         <div class="git-settings-actions">
                             <div class="git-settings-save">
@@ -312,86 +358,3 @@ class Settings
         <?php
     }
 }
-
-// Add JavaScript to handle settings dependency
-add_action('admin_enqueue_scripts', function ($hook) {
-    if (get_current_screen() && 'repo-manager_page_repo-manager-settings' === get_current_screen()->id) {
-        // Register a dummy script to attach inline script to
-        wp_register_script('repo-manager-settings', false, [], GIT_MANAGER_VERSION, true);
-        wp_enqueue_script('repo-manager-settings');
-
-        // Add inline script
-        wp_add_inline_script('repo-manager-settings', '
-        document.addEventListener("DOMContentLoaded", function() {
-            const floatingWidgetCheckbox = document.querySelector("input[name=\"git_manager_floating_widget_enabled\"]");
-            const notificationsCheckbox = document.querySelector("input[name=\"git_manager_floating_notifications_enabled\"]");
-
-            if (floatingWidgetCheckbox && notificationsCheckbox) {
-                // Function to update notifications checkbox state
-                function updateNotificationsState() {
-                    if (!floatingWidgetCheckbox.checked) {
-                        notificationsCheckbox.checked = false;
-                        notificationsCheckbox.disabled = true;
-                    } else {
-                        notificationsCheckbox.disabled = false;
-                    }
-                }
-
-                // Initial state
-                updateNotificationsState();
-
-                // Listen for changes
-                floatingWidgetCheckbox.addEventListener("change", updateNotificationsState);
-            }
-
-            // Theme toggle functionality (same as dashboard)
-            const themeSwitcher = document.querySelector(".git-theme-switcher");
-            if (themeSwitcher) {
-                // Initialize theme from storage
-                const currentTheme = localStorage.getItem("repo-manager-theme") || "light";
-                document.documentElement.setAttribute("data-theme", currentTheme);
-                updateThemeUI();
-
-                // Handle theme switcher click
-                themeSwitcher.addEventListener("click", function(e) {
-                    e.preventDefault();
-                    toggleTheme();
-                });
-
-                // Handle Ctrl+T keyboard shortcut
-                document.addEventListener("keydown", function(e) {
-                    if ((e.ctrlKey || e.metaKey) && e.key === "t") {
-                        e.preventDefault();
-                        toggleTheme();
-                    }
-                });
-            }
-
-            function toggleTheme() {
-                const currentTheme = localStorage.getItem("repo-manager-theme") || "light";
-                const newTheme = currentTheme === "light" ? "dark" : "light";
-
-                localStorage.setItem("repo-manager-theme", newTheme);
-                document.documentElement.setAttribute("data-theme", newTheme);
-                updateThemeUI();
-
-                // Show notification
-            }
-
-            function updateThemeUI() {
-                const currentTheme = localStorage.getItem("repo-manager-theme") || "light";
-                const themeSwitchers = document.querySelectorAll(".git-theme-switcher");
-
-                themeSwitchers.forEach((switcher) => {
-                    const icon = switcher.querySelector("svg");
-                    if (icon) {
-                        icon.innerHTML = currentTheme === "light"
-                            ? "<circle cx=\"12\" cy=\"12\" r=\"4\"/><path d=\"M12 2v2\"/><path d=\"M12 20v2\"/><path d=\"m4.93 4.93 1.41 1.41\"/><path d=\"m17.66 17.66 1.41 1.41\"/><path d=\"M2 12h2\"/><path d=\"M20 12h2\"/><path d=\"m6.34 17.66-1.41 1.41\"/><path d=\"m19.07 4.93-1.41 1.41\"/>"
-                            : "<path d=\"M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z\"/>";
-                    }
-                });
-            }
-        });
-        ');
-    }
-});

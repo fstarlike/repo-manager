@@ -286,7 +286,6 @@ class GitManager
                     'git_manager_repo_set_active'    => wp_create_nonce('git_manager_action'),
                     'git_manager_repo_add_existing'  => wp_create_nonce('git_manager_action'),
                     'git_manager_repo_create_branch' => wp_create_nonce('git_manager_action'),
-                    'git_manager_repo_delete_branch' => wp_create_nonce('git_manager_action'),
                     'git_manager_repo_stash'         => wp_create_nonce('git_manager_action'),
                     'git_manager_repo_stash_pop'     => wp_create_nonce('git_manager_action'),
                     'git_manager_branch'             => wp_create_nonce('git_manager_action'),
@@ -484,20 +483,28 @@ class GitManager
                     'yourRepositoryIsClean'              => __('Your repository is clean and up to date with the remote.', 'repo-manager'),
                     'repositoryIsBehindRemote'           => __('Repository is behind remote by {count} commit(s).', 'repo-manager'),
                     'repositoryIsAheadOfRemote'          => __('Repository is ahead of remote by {count} commit(s).', 'repo-manager'),
-                'addRepositoryTooltip'               => __('Add Repository (Ctrl+N)', 'repo-manager'),
-                'toggleThemeTooltip'                 => __('Toggle Theme (Ctrl+T)', 'repo-manager'),
-                'sshConnectionTest'                  => __('Test SSH Connection', 'repo-manager'),
-                'installGitViaSSH'                   => __('Install Git via SSH', 'repo-manager'),
-                'sshHost'                            => __('SSH Host', 'repo-manager'),
-                'sshUsername'                        => __('SSH Username', 'repo-manager'),
-                'sshPassword'                        => __('SSH Password', 'repo-manager'),
-                'sshKeyPath'                         => __('SSH Key Path', 'repo-manager'),
-                'testingSSHConnection'               => __('Testing SSH connection...', 'repo-manager'),
-                'installingGit'                      => __('Installing Git via SSH...', 'repo-manager'),
-                'sshConnectionSuccess'               => __('SSH connection successful', 'repo-manager'),
-                'sshConnectionFailed'                => __('SSH connection failed', 'repo-manager'),
-                'gitInstallationSuccess'             => __('Git installed successfully', 'repo-manager'),
-                'gitInstallationFailed'              => __('Git installation failed', 'repo-manager'),
+                    'addRepositoryTooltip'               => __('Add Repository (Ctrl+N)', 'repo-manager'),
+                    'toggleThemeTooltip'                 => __('Toggle Theme (Ctrl+T)', 'repo-manager'),
+                    'sshConnectionTest'                  => __('Test SSH Connection', 'repo-manager'),
+                    'installGitViaSSH'                   => __('Install Git via SSH', 'repo-manager'),
+                    'sshHost'                            => __('SSH Host', 'repo-manager'),
+                    'sshUsername'                        => __('SSH Username', 'repo-manager'),
+                    'sshPassword'                        => __('SSH Password', 'repo-manager'),
+                    'sshKeyPath'                         => __('SSH Key Path', 'repo-manager'),
+                    'testingSSHConnection'               => __('Testing SSH connection...', 'repo-manager'),
+                    'installingGit'                      => __('Installing Git via SSH...', 'repo-manager'),
+                    'sshConnectionSuccess'               => __('SSH connection successful', 'repo-manager'),
+                    'sshConnectionFailed'                => __('SSH connection failed', 'repo-manager'),
+                    'gitInstallationSuccess'             => __('Git installed successfully', 'repo-manager'),
+                    'gitInstallationFailed'              => __('Git installation failed', 'repo-manager'),
+                    'processingMigration'        => __('Processing repository paths...', 'repo-manager'),
+                    'unknownError'               => __('Unknown error occurred', 'repo-manager'),
+                    'networkError'               => __('Network error', 'repo-manager'),
+                    'migrateButtonText'          => __('Migrate Repository Paths', 'repo-manager'),
+                    'copiedToClipboard'          => __('Copied to clipboard', 'repo-manager'),
+                    'featureNotAvailable'        => __('This feature is not available for this repository type.', 'repo-manager'),
+                    'noChangesToCommit'          => __('No changes to commit', 'repo-manager'),
+                    'commitMessageRequired'      => __('Commit message is required', 'repo-manager'),
                 ],
             ]);
             wp_localize_script('repo-manager-global', 'gitManagerNonce', ['nonce' => wp_create_nonce('git_manager_action')]);
@@ -634,7 +641,6 @@ class GitManager
                 'repo_set_active'    => 'git_manager_repo_set_active',
                 'repo_add_existing'  => 'git_manager_repo_add_existing',
                 'repo_create_branch' => 'git_manager_repo_create_branch',
-                'repo_delete_branch' => 'git_manager_repo_delete_branch',
                 'repo_stash'         => 'git_manager_repo_stash',
                 'repo_stash_pop'     => 'git_manager_repo_stash_pop',
                 'branch'             => 'git_manager_branch',
@@ -652,6 +658,7 @@ class GitManager
                 'clone_repo'         => 'git_manager_clone_repo',
                 'add_existing_repo'  => 'git_manager_add_existing_repo',
                 'delete_repo'        => 'git_manager_delete_repo',
+                'migrate_paths'      => 'git_manager_migrate_paths',
             ],
         ]);
     }
@@ -955,51 +962,6 @@ class GitManager
         }
     }
 
-    /**
-     * Delete branch
-     */
-    public function deleteBranch(): void
-    {
-        check_ajax_referer('git_manager_action', 'nonce');
-        $this->ensureCapabilities();
-
-        if (!RateLimiter::instance()->checkAjaxRateLimit('git_manager_repo_delete_branch')) {
-            wp_send_json_error('Rate limit exceeded');
-        }
-
-        try {
-            $repoId     = $this->getRepositoryId();
-            $branchName = sanitize_text_field(wp_unslash($_POST['branch_name'] ?? ''));
-            $force      = !empty($_POST['force']);
-
-            if (empty($branchName)) {
-                throw new \Exception('Branch name is required');
-            }
-
-            $repository = RepositoryManager::instance()->get($repoId);
-            if (!$repository instanceof Repository) {
-                throw new \Exception('Repository not found');
-            }
-
-            $args   = $force ? ['-D', $branchName] : ['-d', $branchName];
-            $result = SecureGitRunner::run($repository->path, 'branch', $args);
-
-            AuditLogger::instance()->logGitCommand('branch', $repository->path, $result['success'], $result['output'] ?? null);
-
-            if ($result['success']) {
-                wp_send_json_success($result);
-            } else {
-                wp_send_json_error($result['output'] ?? 'Branch deletion failed');
-            }
-        } catch (\Exception $exception) {
-            AuditLogger::instance()->log('error', 'git_branch_delete_failed', [
-                'error'       => $exception->getMessage(),
-                'repo_id'     => $repoId ?? null,
-                'branch_name' => $branchName ?? null,
-            ]);
-            wp_send_json_error($exception->getMessage());
-        }
-    }
 
     /**
      * Stash changes

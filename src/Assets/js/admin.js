@@ -25,6 +25,98 @@ function getTranslation(key, fallback = "") {
 
 class GitManager {
     constructor() {
+        this.activeRepoId = null;
+        this.repositories = [];
+        this.commits = [];
+        this.branches = [];
+        this.tags = [];
+        this.isDarkTheme = false;
+        this.isBusy = false;
+        this.currentView = "welcome";
+        this.currentRepo = null;
+        this.isModalOpen = false;
+        this.isCloning = false;
+        this.cloneProgress = 0;
+        this.cloneOutput = "";
+        this.searchTerm = "";
+        this.fileBrowser = {
+            isOpen: false,
+            currentPath: "wp-content/",
+            items: [],
+            isLoading: false,
+            error: null,
+            selectedPath: "",
+        };
+
+        this.init();
+        this.setupEventListeners();
+        this.setupKeyboardShortcuts();
+        this.setupMigrationTool();
+    }
+
+    t(key, fallback = "") {
+        return WPGitManagerGlobal.translations[key] || fallback || key;
+    }
+
+    setupMigrationTool() {
+        const migrateBtn = document.getElementById("migrate-paths-btn");
+        const migrationStatus = document.getElementById("migration-status");
+
+        if (!migrateBtn || !migrationStatus) {
+            return;
+        }
+
+        migrateBtn.addEventListener("click", () => {
+            migrateBtn.disabled = true;
+            migrateBtn.innerHTML = `
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" class="spinning">
+                    <path d="M21 12a9 9 0 11-6.219-8.56"/>
+                </svg>
+                ${this.t("migrating")}
+            `;
+
+            migrationStatus.style.display = "block";
+            migrationStatus.innerHTML = `<div class="git-status-info">${this.t(
+                "processingMigration"
+            )}</div>`;
+
+            this.apiCall("migrate_paths")
+                .then((data) => {
+                    if (data.success) {
+                        migrationStatus.innerHTML = `<div class="git-status-success">${data.data.message}</div>`;
+                    } else {
+                        migrationStatus.innerHTML = `<div class="git-status-error">${this.t(
+                            "error"
+                        )}: ${data.data || this.t("unknownError")}</div>`;
+                    }
+                })
+                .catch((error) => {
+                    migrationStatus.innerHTML = `<div class="git-status-error">${this.t(
+                        "networkError"
+                    )}: ${error.message}</div>`;
+                })
+                .finally(() => {
+                    migrateBtn.disabled = false;
+                    migrateBtn.innerHTML = `
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7,10 12,15 17,10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        ${this.t("migrateButtonText")}
+                    `;
+                });
+        });
+    }
+
+    async init() {
+        if (this._initialized) {
+            return;
+        }
+        this.isDarkTheme =
+            localStorage.getItem("repo-manager-theme") === "dark" ||
+            document.documentElement.getAttribute("data-theme") === "dark";
+
         // Debounce utility
         this.debounce = (func, delay) => {
             let timeout;
@@ -50,27 +142,25 @@ class GitManager {
         // Initialize theme from storage (defaults handled in getStoredTheme)
         this.theme = this.getStoredTheme();
         this.urlAutofillTimer = null; // Debounce timer for URL autofill
-        this._initialized = false; // Ensure init runs only once
         this._ajaxWaitAttempts = 0; // Retry counter for waiting gitManagerAjax
 
         // Bind handlers BEFORE initialization so event listeners use bound methods
-        this.handleGlobalClick = this.handleGlobalClick.bind(this);
         this.handleGlobalKeydown = this.handleGlobalKeydown.bind(this);
         this.handleFormSubmit = this.handleFormSubmit.bind(this);
-
+        this.handleModalBackdropClick =
+            this.handleModalBackdropClick.bind(this);
         this.selectRepository = this.selectRepository.bind(this);
 
-        // Initialize when DOM is ready; if already ready, run now
-        console.log(document.readyState);
-
         if (document.readyState === "loading") {
-            document.addEventListener("DOMContentLoaded", () => this.init());
+            document.addEventListener("DOMContentLoaded", () =>
+                this.initializeApp()
+            );
         } else {
-            this.init();
+            this.initializeApp();
         }
     }
 
-    init() {
+    initializeApp() {
         try {
             // Avoid double initialization
             if (this._initialized) return;
@@ -79,7 +169,7 @@ class GitManager {
             if (typeof gitManagerAjax === "undefined") {
                 if (this._ajaxWaitAttempts < 30) {
                     this._ajaxWaitAttempts++;
-                    setTimeout(() => this.init(), 100);
+                    setTimeout(() => this.initializeApp(), 100);
                 } else {
                     console.warn(
                         "GitManager: gitManagerAjax not found; initialization skipped after retries."
@@ -138,8 +228,6 @@ class GitManager {
                     );
                 }
             }, 50);
-            this.handleModalBackdropClick =
-                this.handleModalBackdropClick.bind(this);
         } catch (error) {}
     }
 
@@ -154,7 +242,7 @@ class GitManager {
         // Window events
         window.addEventListener(
             "resize",
-            this.debounce(() => this.handleResize(), 250)
+            this.debounce(this.handleResize, 250)
         );
 
         // Form submissions
@@ -194,7 +282,7 @@ class GitManager {
     /**
      * Handle global click events with delegation
      */
-    handleGlobalClick(e) {
+    handleGlobalClick = (e) => {
         const target = e.target;
 
         // Clone repository button - improved detection
@@ -232,9 +320,12 @@ class GitManager {
         const actionBtn = target.closest(".git-action-btn");
         if (actionBtn) {
             const action = actionBtn.dataset.action;
-            if (action) {
+            const repoId =
+                actionBtn.dataset.repoId ||
+                actionBtn.closest(".git-repo-card")?.dataset.repoId;
+            if (action && repoId) {
                 e.preventDefault();
-                this.handleAction(action, actionBtn);
+                this.handleRepoAction(action, repoId);
                 return;
             }
         }
@@ -313,7 +404,7 @@ class GitManager {
                 return;
             }
         }
-    }
+    };
 
     /**
      * Handle global keyboard shortcuts
@@ -358,10 +449,20 @@ class GitManager {
         }
     }
 
+    handleModalBackdropClick(e) {
+        // Close modal if clicking on the backdrop (overlay)
+        if (e.target.classList.contains("git-modal-overlay")) {
+            const modalId = e.target.dataset.modalId;
+            if (modalId) {
+                this.closeModal(modalId);
+            }
+        }
+    }
+
     /**
      * Handle window resize
      */
-    handleResize() {
+    handleResize = () => {
         // Adjust modal positions and sizes
         this.modals.forEach((modal) => {
             if (modal.isOpen) {
@@ -370,7 +471,7 @@ class GitManager {
         });
 
         this.updateFileBrowserHeight();
-    }
+    };
 
     updateFileBrowserHeight() {
         const fileBrowser = document.querySelector(
@@ -2264,9 +2365,9 @@ class GitManager {
 
                 <div class="repo-card-actions">
                     <div class="repo-action-group">
-                        <button class="repo-action-btn" data-action="pull" title="Pull changes" onclick="window.safeGitManagerCall('gitOperation', 'pull', '${
+                        <button class="git-action-btn repo-action-btn" data-action="pull" data-repo-id="${
                             repo.id
-                        }')">
+                        }" title="Pull changes">
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17V3"/><path d="m6 11 6 6 6-6"/><path d="M19 21H5"/></svg>
                             <span class="commit-count-badge pull-badge">${
                                 repo.behind || 0
@@ -2274,18 +2375,18 @@ class GitManager {
                         </button>
                     </div>
                     <div class="repo-action-group">
-                        <button class="repo-action-btn" data-action="push" title="Push changes" onclick="window.safeGitManagerCall('gitOperation', 'push', '${
+                        <button class="git-action-btn repo-action-btn" data-action="push" data-repo-id="${
                             repo.id
-                        }')">
+                        }" title="Push changes">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" width="16" height="16" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 9-6-6-6 6"/><path d="M12 3v14"/><path d="M5 21h14"/></svg>
                             <span class="commit-count-badge push-badge">${
                                 repo.ahead || 0
                             }</span>
                         </button>
                     </div>
-                    <button class="repo-action-btn repo-delete-btn" data-action="delete" title="Delete repository" onclick="window.safeGitManagerCall('deleteRepository', '${
+                    <button class="git-action-btn repo-action-btn repo-delete-btn" data-action="delete" data-repo-id="${
                         repo.id
-                    }')">
+                    }" title="Delete repository">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
                             <path d="M3 6h18"/>
                             <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
@@ -2343,15 +2444,15 @@ class GitManager {
                 </div>
 
                 <div class="repo-card-actions">
-                    <button class="repo-action-btn repo-troubleshoot-btn" data-action="troubleshoot" title="Troubleshoot this repository" onclick="window.safeGitManagerCall('troubleshootRepoFor', '${
+                    <button class="git-action-btn repo-action-btn repo-troubleshoot-btn" data-action="troubleshoot" data-repo-id="${
                         repo.id
-                    }')">
+                    }" title="Troubleshoot this repository">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
                         Troubleshoot
                     </button>
-                    <button class="repo-action-btn repo-reclone-btn" data-action="reclone" title="Re-clone repository to same path" onclick="window.safeGitManagerCall('reCloneRepository', '${
+                    <button class="git-action-btn repo-action-btn repo-reclone-btn" data-action="reclone" data-repo-id="${
                         repo.id
-                    }')">
+                    }" title="Re-clone repository to same path">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
                             <path d="M21 3v5h-5"/>
@@ -2360,17 +2461,17 @@ class GitManager {
                         </svg>
                         Re-clone
                     </button>
-                    <button class="repo-action-btn repo-manage-path-btn" data-action="manage-path" title="Manage repository path" onclick="window.safeGitManagerCall('manageRepositoryPath', '${
+                    <button class="git-action-btn repo-action-btn repo-manage-path-btn" data-action="manage-path" data-repo-id="${
                         repo.id
-                    }')">
+                    }" title="Manage repository path">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
                         </svg>
                         Manage Path
                     </button>
-                    <button class="repo-action-btn repo-delete-btn" data-action="delete" title="Delete repository" onclick="window.safeGitManagerCall('deleteRepository', '${
+                    <button class="git-action-btn repo-action-btn repo-delete-btn" data-action="delete" data-repo-id="${
                         repo.id
-                    }')">
+                    }" title="Delete repository">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
                             <path d="M3 6h18"/>
                             <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
@@ -2401,6 +2502,14 @@ class GitManager {
     }
 
     async selectRepository(repoId) {
+        if (!repoId) {
+            console.warn(
+                "selectRepository called with invalid repoId:",
+                repoId
+            );
+            return;
+        }
+
         // Hide all skeleton loading states first
         if (typeof gitManagerSkeleton !== "undefined") {
             gitManagerSkeleton.hideAllSkeletons();
@@ -2419,13 +2528,11 @@ class GitManager {
             selectedCard.classList.add("active");
         }
 
+        // Store current repository
         this.currentRepo = repoId;
 
-        // Always show repository details when card is clicked
-        // Troubleshooting should only be opened when the troubleshoot button is clicked
-        setTimeout(() => {
-            this.showRepositoryDetails(repoId);
-        }, 100);
+        // Show repository details immediately
+        this.showRepositoryDetails(repoId);
     }
 
     showMissingFolderMessage(repoId) {
@@ -2438,13 +2545,20 @@ class GitManager {
     }
 
     showRepositoryDetails(repoId) {
+        if (!repoId) {
+            console.warn(
+                "showRepositoryDetails called with invalid repoId:",
+                repoId
+            );
+            return;
+        }
+
         // Hide welcome screen and add repository section
         const welcomeScreen = document.getElementById("git-welcome-screen");
         const addRepoSection = document.getElementById("git-add-repository");
 
         if (welcomeScreen) {
             welcomeScreen.style.display = "none";
-        } else {
         }
 
         if (addRepoSection) {
@@ -2464,10 +2578,17 @@ class GitManager {
             // Ensure the content is properly laid out
             detailsScreen.classList.add("active");
 
+            // Load repository details
             this.loadRepositoryDetails(repoId);
+
             // Reset signature so next list comparison includes active flag changes
             this._lastRepoListSignature = null;
         } else {
+            console.error("Repository details screen element not found");
+            this.showNotification(
+                "Repository details panel not found",
+                "error"
+            );
         }
     }
 
@@ -3805,11 +3926,13 @@ class GitManager {
 
             if (response.ok) {
                 const result = await response.json();
+                console.log("Branch loading response:", result);
                 if (result.success) {
                     gitManagerSkeleton.hideBranchesSkeleton();
                     this.populateBranches(result.data);
                 } else {
                     gitManagerSkeleton.hideBranchesSkeleton();
+                    console.error("Branch loading failed:", result.data);
                     branchesList.innerHTML = `<p>Error loading branches: ${result.data}</p>`;
                 }
             } else {
@@ -3825,78 +3948,244 @@ class GitManager {
     populateBranches(data) {
         const branchesList = document.querySelector(".branches-list");
         const searchInput = document.getElementById("branch-search-input");
-        if (!branchesList || !searchInput) return;
 
-        const { branches, activeBranch } = data;
+        if (!branchesList) {
+            console.error("Branches list element not found");
+            return;
+        }
 
-        if (branches.length === 0) {
+        if (!searchInput) {
+            console.error("Branch search input element not found");
+            return;
+        }
+
+        console.log("Populating branches with data:", data);
+
+        const {
+            branches = [],
+            active_branch: activeBranch,
+            local_branches = [],
+            remote_branches = [],
+        } = data;
+
+        if (!branches || branches.length === 0) {
             branchesList.innerHTML = "<p>No branches found.</p>";
             return;
         }
 
-        const render = (filter = "") => {
-            const filteredBranches = branches.filter((branch) =>
-                branch.toLowerCase().includes(filter.toLowerCase())
+        // Sort branches with priority: active first, then master/main, then alphabetically
+        const sortBranches = (branches, activeBranch) => {
+            return branches.sort((a, b) => {
+                const branchA = a.replace("* ", "");
+                const branchB = b.replace("* ", "");
+
+                // Active branch comes first
+                if (branchA === activeBranch) return -1;
+                if (branchB === activeBranch) return 1;
+
+                // Master/main branches come second
+                const isMainA = branchA === "main" || branchA === "master";
+                const isMainB = branchB === "main" || branchB === "master";
+
+                if (isMainA && !isMainB) return -1;
+                if (isMainB && !isMainA) return 1;
+
+                // Alphabetical order for the rest
+                return branchA.localeCompare(branchB);
+            });
+        };
+
+        const render = (filter = "", activeTab = "local") => {
+            // Filter and sort branches
+            const filteredLocalBranches = sortBranches(
+                local_branches.filter((branch) =>
+                    branch.toLowerCase().includes(filter.toLowerCase())
+                ),
+                activeBranch
+            );
+            const filteredRemoteBranches = sortBranches(
+                remote_branches.filter((branch) =>
+                    branch.toLowerCase().includes(filter.toLowerCase())
+                ),
+                null // No active branch for remote
             );
 
-            if (filteredBranches.length === 0) {
+            if (
+                filteredLocalBranches.length === 0 &&
+                filteredRemoteBranches.length === 0
+            ) {
                 branchesList.innerHTML = "<p>No matching branches found.</p>";
                 return;
             }
 
-            const branchesHTML = filteredBranches
-                .map((branch) => {
+            // Create tabbed interface
+            let branchesHTML = `
+                <div class="branch-tabs-container">
+                    <div class="branch-tabs">
+                        <button class="branch-tab ${
+                            activeTab === "local" ? "active" : ""
+                        }" data-tab="local">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M20 6L9 17l-5-5"/>
+                            </svg>
+                            Local (${filteredLocalBranches.length})
+                        </button>
+                        <button class="branch-tab ${
+                            activeTab === "remote" ? "active" : ""
+                        }" data-tab="remote">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="M2 12h20"/>
+                                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                            </svg>
+                            Remote (${filteredRemoteBranches.length})
+                        </button>
+                    </div>
+                    <div class="branch-tab-content">
+            `;
+
+            // Local branches content
+            if (activeTab === "local") {
+                branchesHTML += '<div class="branch-list local-branches">';
+                filteredLocalBranches.forEach((branch) => {
                     const isCurrent = branch.replace("* ", "") === activeBranch;
                     const branchName = branch.replace("* ", "");
                     const isMain =
                         branchName === "main" || branchName === "master";
-                    return `
-                <div class="branch-item ${isCurrent ? "active" : ""} ${
-                        isMain ? "branch-item-main" : ""
-                    }">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="branch-icon"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
-                    <span class="branch-name">${this.escapeHtml(
-                        branchName
-                    )}</span>
-                    <div class="branch-actions">
-                        ${
-                            isCurrent
-                                ? '<span class="current-branch-badge">Current</span>'
-                                : `<button class="git-action-btn checkout-btn" data-branch="${this.escapeHtml(
-                                      branchName
-                                  )}">Checkout</button>`
-                        }
-                        ${
-                            !isCurrent
-                                ? `<button class="git-action-btn delete-branch-btn" data-branch="${this.escapeHtml(
-                                      branchName
-                                  )}"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="action-icon-svg"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>`
-                                : ""
-                        }
+
+                    branchesHTML += `
+                        <div class="branch-item ${isCurrent ? "current" : ""} ${
+                        isMain ? "main-branch" : ""
+                    }" data-branch-type="local">
+                            <div class="branch-info">
+                                <div class="branch-icon-wrapper">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="branch-icon">
+                                        <line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>
+                                    </svg>
+                                </div>
+                                <div class="branch-details">
+                                    <span class="branch-name">${this.escapeHtml(
+                                        branchName
+                                    )}</span>
+                                    ${
+                                        isCurrent
+                                            ? '<span class="branch-status current">Current</span>'
+                                            : ""
+                                    }
+                                    ${
+                                        isMain
+                                            ? '<span class="branch-status main">Main</span>'
+                                            : ""
+                                    }
+                                </div>
+                            </div>
+                            <div class="branch-actions">
+                                ${
+                                    !isCurrent
+                                        ? `<button class="git-action-btn checkout-btn" data-branch="${this.escapeHtml(
+                                              branchName
+                                          )}">Checkout</button>`
+                                        : ""
+                                }
+                            </div>
+                        </div>
+                    `;
+                });
+                branchesHTML += "</div>";
+            }
+
+            // Remote branches content
+            if (activeTab === "remote") {
+                branchesHTML += '<div class="branch-list remote-branches">';
+                filteredRemoteBranches.forEach((branch) => {
+                    const branchName = branch.replace("* ", "");
+                    const isMain =
+                        branchName === "main" || branchName === "master";
+                    const hasLocal = local_branches.some(
+                        (localBranch) =>
+                            localBranch.replace("* ", "") === branchName
+                    );
+
+                    branchesHTML += `
+                        <div class="branch-item remote ${
+                            isMain ? "main-branch" : ""
+                        }" data-branch-type="remote">
+                            <div class="branch-info">
+                                <div class="branch-icon-wrapper">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="branch-icon">
+                                        <circle cx="12" cy="12" r="10"/>
+                                        <path d="M2 12h20"/>
+                                        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                                    </svg>
+                                </div>
+                                <div class="branch-details">
+                                    <span class="branch-name">origin/${this.escapeHtml(
+                                        branchName
+                                    )}</span>
+                                    ${
+                                        isMain
+                                            ? '<span class="branch-status main">Main</span>'
+                                            : ""
+                                    }
+                                    ${
+                                        hasLocal
+                                            ? '<span class="branch-status local-exists">Has Local</span>'
+                                            : ""
+                                    }
+                                </div>
+                            </div>
+                            <div class="branch-actions">
+                                ${
+                                    !hasLocal
+                                        ? `<button class="git-action-btn checkout-btn" data-branch="${this.escapeHtml(
+                                              branchName
+                                          )}" data-is-remote="true">Checkout</button>`
+                                        : ""
+                                }
+                            </div>
+                        </div>
+                    `;
+                });
+                branchesHTML += "</div>";
+            }
+
+            branchesHTML += `
                     </div>
                 </div>
             `;
-                })
-                .join("");
+
             branchesList.innerHTML = branchesHTML;
 
-            branchesList.querySelectorAll(".checkout-btn").forEach((button) => {
-                button.addEventListener("click", (e) => {
-                    const branchName = e.target.dataset.branch;
-                    this.checkoutBranch(this.currentRepo, branchName);
+            // Set up tab switching
+            branchesList.querySelectorAll(".branch-tab").forEach((tab) => {
+                tab.addEventListener("click", (e) => {
+                    const tabType = e.target.dataset.tab;
+                    render(filter, tabType);
                 });
             });
 
-            branchesList
-                .querySelectorAll(".delete-branch-btn")
-                .forEach((button) => {
-                    button.addEventListener("click", (e) => {
-                        const branchName =
-                            e.target.closest("[data-branch]").dataset.branch;
-                        this.deleteBranch(this.currentRepo, branchName);
-                    });
+            // Set up checkout buttons
+            branchesList.querySelectorAll(".checkout-btn").forEach((button) => {
+                button.addEventListener("click", (e) => {
+                    const branchName = e.target.dataset.branch;
+                    const isRemote = e.target.dataset.isRemote === "true";
+
+                    if (isRemote) {
+                        this.checkoutRemoteBranch(this.currentRepo, branchName);
+                    } else {
+                        this.checkoutBranch(this.currentRepo, branchName);
+                    }
                 });
+            });
         };
+
+        // Initial render with no filter
+        render();
+
+        // Set up search functionality
+        searchInput.addEventListener("input", (e) => {
+            render(e.target.value);
+        });
     }
 
     /**
@@ -3922,8 +4211,157 @@ class GitManager {
                 );
             }
         } catch (error) {
+            // Handle uncommitted changes error specifically
+            const errorMsg = error.message || "";
+            if (
+                errorMsg.includes(
+                    "Please commit or stash your changes first"
+                ) ||
+                errorMsg.includes(
+                    "Your local changes to the following files would be overwritten"
+                ) ||
+                errorMsg.includes("would be overwritten by checkout")
+            ) {
+                this.handleUncommittedChangesError(
+                    repoId,
+                    branchName,
+                    errorMsg
+                );
+            } else {
+                this.showNotification(
+                    `Error checking out branch: ${errorMsg}`,
+                    "error"
+                );
+            }
+        } finally {
+            this.hideProgress();
+        }
+    }
+
+    /**
+     * Handle uncommitted changes error during checkout
+     */
+    handleUncommittedChangesError(repoId, branchName, errorMessage) {
+        const modalHTML = `
+            <div class="git-modal uncommitted-changes-modal">
+                <div class="git-modal-header">
+                    <div class="modal-header-content">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="modal-icon warning">
+                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                            <line x1="12" y1="9" x2="12" y2="13"/>
+                            <line x1="12" y1="17" x2="12.01" y2="17"/>
+                        </svg>
+                        <h3>Uncommitted Changes Detected</h3>
+                    </div>
+                    <button class="git-modal-close" type="button">&times;</button>
+                </div>
+                <div class="git-modal-body">
+                    <div class="modal-message">
+                        <p>Cannot checkout to <strong class="branch-highlight">${this.escapeHtml(
+                            branchName
+                        )}</strong> because you have uncommitted changes.</p>
+                        <p class="modal-subtitle">Choose how you'd like to handle your changes:</p>
+                    </div>
+                    <div class="checkout-options">
+                        <button class="git-action-btn git-primary-btn" data-action="stash-and-checkout" data-repo-id="${repoId}" data-branch="${this.escapeHtml(
+            branchName
+        )}">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
+                            </svg>
+                            <div class="button-content">
+                                <span class="button-title">Stash Changes & Checkout</span>
+                                <span class="button-description">Save changes temporarily and switch branch</span>
+                            </div>
+                        </button>
+                        <button class="git-action-btn git-secondary-btn" data-action="force-checkout" data-repo-id="${repoId}" data-branch="${this.escapeHtml(
+            branchName
+        )}">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                            </svg>
+                            <div class="button-content">
+                                <span class="button-title">Force Checkout (Discard Changes)</span>
+                                <span class="button-description">⚠️ Permanently discard all uncommitted changes</span>
+                            </div>
+                        </button>
+                        <button class="git-action-btn git-tertiary-btn" data-action="cancel">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M18 6L6 18"/>
+                                <path d="M6 6l12 12"/>
+                            </svg>
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const modal = this.showModal("checkout-uncommitted", modalHTML);
+
+        // Handle option selection
+        modal.addEventListener("click", async (e) => {
+            const action = e.target.dataset.action;
+            if (!action) return;
+
+            const repoIdFromBtn = e.target.dataset.repoId;
+            const branchFromBtn = e.target.dataset.branch;
+
+            switch (action) {
+                case "stash-and-checkout":
+                    this.closeModal("checkout-uncommitted");
+                    await this.stashAndCheckout(repoIdFromBtn, branchFromBtn);
+                    break;
+                case "force-checkout":
+                    this.closeModal("checkout-uncommitted");
+                    await this.forceCheckout(repoIdFromBtn, branchFromBtn);
+                    break;
+                case "cancel":
+                    this.closeModal("checkout-uncommitted");
+                    break;
+            }
+        });
+    }
+
+    /**
+     * Stash changes and then checkout
+     */
+    async stashAndCheckout(repoId, branchName) {
+        this.showProgress(`Stashing changes and checking out ${branchName}...`);
+        try {
+            // First stash the changes
+            const stashResult = await this.apiCall("git_manager_repo_stash", {
+                id: repoId,
+                message: `Auto-stash before checkout to ${branchName}`,
+            });
+
+            if (!stashResult.success) {
+                throw new Error(stashResult.data || "Failed to stash changes");
+            }
+
+            // Then checkout the branch
+            const checkoutResult = await this.apiCall(
+                "git_manager_repo_checkout",
+                {
+                    id: repoId,
+                    branch: branchName,
+                }
+            );
+
+            if (checkoutResult.success) {
+                this.showNotification(
+                    `Successfully stashed changes and checked out to ${branchName}`,
+                    "success"
+                );
+                this.refreshRepoDetails(repoId);
+            } else {
+                throw new Error(
+                    checkoutResult.data || `Failed to checkout ${branchName}`
+                );
+            }
+        } catch (error) {
             this.showNotification(
-                `Error checking out branch: ${error.message}`,
+                `Error during stash and checkout: ${error.message}`,
                 "error"
             );
         } finally {
@@ -3931,42 +4369,109 @@ class GitManager {
         }
     }
 
-    async deleteBranch(repoId, branchName) {
+    /**
+     * Force checkout (discarding changes)
+     */
+    async forceCheckout(repoId, branchName) {
         if (
             !confirm(
-                `Are you sure you want to delete the branch "${branchName}"? This action cannot be undone.`
+                `Are you sure you want to discard all uncommitted changes and checkout to ${branchName}? This action cannot be undone.`
             )
         ) {
             return;
         }
 
-        this.showProgress(`Deleting branch ${branchName}...`);
+        this.showProgress(`Force checking out ${branchName}...`);
         try {
-            const result = await this.apiCall(
-                "git_manager_repo_delete_branch",
-                {
-                    id: repoId,
-                    branch: branchName,
-                }
-            );
+            const result = await this.apiCall("git_manager_repo_checkout", {
+                id: repoId,
+                branch: branchName,
+                force: true,
+            });
 
             if (result.success) {
                 this.showNotification(
-                    `Branch "${branchName}" deleted successfully`,
+                    `Successfully checked out to ${branchName} (changes discarded)`,
                     "success"
                 );
-                this.loadBranches(repoId); // Refresh the branch list
+                this.refreshRepoDetails(repoId);
             } else {
-                throw new Error(result.data || "Failed to delete branch");
+                throw new Error(
+                    result.data || `Failed to force checkout ${branchName}`
+                );
             }
         } catch (error) {
             this.showNotification(
-                `Error deleting branch: ${error.message}`,
+                `Error during force checkout: ${error.message}`,
                 "error"
             );
         } finally {
             this.hideProgress();
         }
+    }
+
+    /**
+     * Checkout remote branch (creates local tracking branch)
+     */
+    async checkoutRemoteBranch(repoId, branchName) {
+        this.showProgress(`Creating local branch from origin/${branchName}...`);
+        try {
+            const result = await this.apiCall("git_manager_repo_checkout", {
+                id: repoId,
+                branch: branchName,
+                remote: true,
+            });
+
+            if (result.success) {
+                this.showNotification(
+                    `Successfully created local branch ${branchName} from origin/${branchName}`,
+                    "success"
+                );
+                this.refreshRepoDetails(repoId);
+            } else {
+                // Handle uncommitted changes error specifically
+                const errorMsg = result.data || "";
+                if (
+                    errorMsg.includes(
+                        "Please commit or stash your changes first"
+                    ) ||
+                    errorMsg.includes(
+                        "Your local changes to the following files would be overwritten"
+                    ) ||
+                    errorMsg.includes("would be overwritten by checkout")
+                ) {
+                    this.handleUncommittedChangesError(
+                        repoId,
+                        branchName,
+                        errorMsg
+                    );
+                } else {
+                    throw new Error(
+                        errorMsg ||
+                            `Failed to checkout remote branch ${branchName}`
+                    );
+                }
+            }
+        } catch (error) {
+            this.showNotification(
+                `Error checking out remote branch: ${error.message}`,
+                "error"
+            );
+        } finally {
+            this.hideProgress();
+        }
+    }
+
+    /**
+     * Refresh repository details after operations
+     */
+    refreshRepoDetails(repoId) {
+        if (this.currentRepo === repoId) {
+            this.loadRepositoryDetails(repoId);
+            this.loadBranches(repoId);
+        }
+        // Also refresh the repository list to show updated status
+        this.loadRepositories();
     }
 
     handleRepoAction(action, repoId) {
@@ -3992,7 +4497,14 @@ class GitManager {
             case "delete":
                 this.deleteRepository(repoId);
                 break;
+            case "reclone":
+                this.reCloneRepository(repoId);
+                break;
+            case "manage-path":
+                this.manageRepositoryPath(repoId);
+                break;
             default:
+                console.warn(`Unhandled repository action: ${action}`);
         }
     }
 
@@ -5766,7 +6278,13 @@ class GitManager {
      */
     async apiCall(action, data = {}) {
         const formData = new FormData();
-        formData.append("action", action);
+        const resolvedAction =
+            typeof gitManagerAjax !== "undefined" &&
+            gitManagerAjax.actions &&
+            gitManagerAjax.actions[action]
+                ? gitManagerAjax.actions[action]
+                : action;
+        formData.append("action", resolvedAction);
         formData.append("nonce", gitManagerAjax.nonce);
 
         // Add all data properties to formData
@@ -5890,6 +6408,13 @@ class GitManager {
                         duration: 2000,
                     }
                 );
+
+                if (!nameInput || !pathInput || !remoteInput) {
+                    this.showNotification(
+                        "One or more settings fields are missing.",
+                        "error"
+                    );
+                }
             } else {
                 this.showNotification(
                     "Failed to load repository settings",

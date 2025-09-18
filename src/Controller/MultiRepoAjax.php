@@ -56,7 +56,6 @@ class MultiRepoAjax
         add_action('wp_ajax_git_manager_get_repo_details', [$this, 'getDetails']);
         add_action('wp_ajax_git_manager_repo_status', [$this, 'getStatus']);
         add_action('wp_ajax_git_manager_repo_create_branch', [$this, 'createBranch']);
-        add_action('wp_ajax_git_manager_repo_delete_branch', [$this, 'deleteBranch']);
         add_action('wp_ajax_git_manager_repo_stash', [$this, 'stash']);
         add_action('wp_ajax_git_manager_repo_stash_pop', [$this, 'stashPop']);
         add_action('wp_ajax_git_manager_repo_troubleshoot', [$this, 'troubleshootRepo']);
@@ -970,30 +969,6 @@ class MultiRepoAjax
         wp_send_json_success($res);
     }
 
-    public function deleteBranch(): void
-    {
-        $this->ensureAllowed();
-
-        // Verify nonce
-        check_ajax_referer('git_manager_action', 'nonce');
-
-        $id         = $this->getRepositoryId();
-        $branchName = $this->sanitizeRef(sanitize_text_field(wp_unslash($_POST['branch'] ?? '')));
-        $repo       = $this->repositoryManager->get($id);
-
-        if (! $repo || ! $branchName) {
-            wp_send_json_error('Invalid branch name');
-        }
-
-        // Don't allow deleting current branch
-        $current = GitCommandRunner::run($repo->path, 'rev-parse --abbrev-ref HEAD');
-        if (trim($current['output']) === $branchName) {
-            wp_send_json_error('Cannot delete current branch');
-        }
-
-        $res = GitCommandRunner::run($repo->path, 'branch -D ' . escapeshellarg($branchName));
-        wp_send_json_success($res);
-    }
 
     public function push(): void
     {
