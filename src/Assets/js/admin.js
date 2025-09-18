@@ -140,23 +140,26 @@ class GitManager {
         const addRepoForm = document.getElementById("add-repo-form");
         if (addRepoForm) {
             const isExistingCheckbox = addRepoForm.querySelector(
-                'input[name="is_existing"]'
+                'input[name="existing_repo"]'
             );
-            const branchInputContainer = addRepoForm.querySelector(
-                ".branch-input-container"
+            const branchInput = addRepoForm.querySelector(
+                'input[name="repo_branch"]'
             );
 
-            if (isExistingCheckbox && branchInputContainer) {
-                isExistingCheckbox.addEventListener("change", (e) => {
-                    branchInputContainer.style.display = e.target.checked
-                        ? "none"
-                        : "";
-                });
+            if (isExistingCheckbox && branchInput) {
+                const branchInputContainer = branchInput.closest(".form-group");
 
-                // Set initial state
-                branchInputContainer.style.display = isExistingCheckbox.checked
-                    ? "none"
-                    : "";
+                if (branchInputContainer) {
+                    isExistingCheckbox.addEventListener("change", (e) => {
+                        branchInputContainer.style.display = e.target.checked
+                            ? "none"
+                            : "";
+                    });
+
+                    // Set initial state
+                    branchInputContainer.style.display =
+                        isExistingCheckbox.checked ? "none" : "";
+                }
             }
         }
     }
@@ -1724,10 +1727,11 @@ class GitManager {
         const formData = new FormData(form);
         const data = Object.fromEntries(formData.entries());
 
-        // Validate form
-        if (!this.validateAddRepositoryForm(data)) {
+        if (!this.validateAddRepositoryForm(form)) {
             return;
         }
+
+        const repoName = data.repo_name;
 
         // Show loading state
         const submitBtn = form.querySelector('button[type="submit"]');
