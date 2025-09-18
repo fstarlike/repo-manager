@@ -99,35 +99,42 @@ class MultiRepoAjax
      */
     private function determineRepositoryType(string $path): string
     {
-        $realPath = realpath($path);
-        if (false === $realPath) {
-            return 'other';
+        // Use the resolved path instead of trying to resolve it again
+        $resolvedPath = $this->repositoryManager->resolvePath($path);
+
+        // If resolvePath fails, try realpath as fallback
+        if (!$resolvedPath || !is_dir($resolvedPath)) {
+            $realPath = realpath($path);
+            if (false === $realPath) {
+                return 'other';
+            }
+            $resolvedPath = $realPath;
         }
 
         // Normalize paths to use forward slashes for consistent comparison
-        $realPath     = str_replace('\\', '/', $realPath);
+        $resolvedPath = str_replace('\\', '/', $resolvedPath);
         $wpPluginDir  = str_replace('\\', '/', WP_PLUGIN_DIR);
         $wpContentDir = str_replace('\\', '/', WP_CONTENT_DIR);
 
         // Check if it's a plugin
-        if (0 === strpos($realPath, (string) $wpPluginDir)) {
+        if (0 === strpos($resolvedPath, (string) $wpPluginDir)) {
             return 'plugin';
         }
 
         // Check if it's a theme
         $themesDir      = get_template_directory();
         $parentThemeDir = dirname($themesDir);
-        str_replace('\\', '/', $themesDir);
+        $themesDir      = str_replace('\\', '/', $themesDir);
         $parentThemeDir = str_replace('\\', '/', $parentThemeDir);
 
-        if (0 === strpos($realPath, $parentThemeDir)) {
+        if (0 === strpos($resolvedPath, $parentThemeDir)) {
             return 'theme';
         }
 
         // Check if it's in wp-content/themes directory
         $wpContentThemesDir = $wpContentDir . '/themes';
 
-        if (0 === strpos($realPath, $wpContentThemesDir)) {
+        if (0 === strpos($resolvedPath, $wpContentThemesDir)) {
             return 'theme';
         }
 
@@ -157,12 +164,12 @@ class MultiRepoAjax
                 $repo->debug_info['is_dir_check']      = 'failed';
                 $repo->debug_info['is_readable_check'] = $repo->isReadable ? 'passed' : 'failed';
                 $repo->activeBranch                    = null;
-                // Determine repo type from stored path for better hinting
-                $repo->repoType = $this->determineRepositoryType($repo->path);
+                // Determine repo type from resolved path for better hinting
+                $repo->repoType = $this->determineRepositoryType($resolvedPath);
                 continue;
             }
             $repo->debug_info['is_dir_check'] = 'passed';
-            $repo->repoType = $this->determineRepositoryType($repo->path);
+            $repo->repoType = $this->determineRepositoryType($resolvedPath);
 
             // Validate git repository (supports .git dir or worktree file)
             $repo->isValidGit = SecureGitRunner::isGitRepositoryPath($resolvedPath);
@@ -385,7 +392,7 @@ class MultiRepoAjax
         $details = [
             'id'           => $repo->id,
             'name'         => $repo->name,
-            'path'         => realpath($repo->path) ?: stripslashes_deep($repo->path),
+            'path'         => $resolvedPath,
             'remoteUrl'    => $remoteUrl ?: $repo->remoteUrl,
             'activeBranch' => $repo->activeBranch,
             'hasChanges'   => $hasChanges,
