@@ -144,6 +144,12 @@ class MultiRepoAjax
         }
 
         $repos = $this->repositoryManager->all();
+        foreach ( $repos as $repo ) {
+            if ( is_dir( $repo->path ) && SecureGitRunner::isGitRepositoryPath( $repo->path ) ) {
+                $branchResult      = SecureGitRunner::runInDirectory( $repo->path, 'rev-parse --abbrev-ref HEAD' );
+                $repo->activeBranch = $branchResult['success'] ? trim( $branchResult['output'] ) : null;
+            }
+        }
         $data  = array_map(fn ($repo) => $repo->toArray(), $repos);
 
         wp_send_json_success($data);

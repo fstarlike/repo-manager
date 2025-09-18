@@ -35,12 +35,29 @@ class Repository
         $this->meta      = is_array($data['meta'] ?? null) ? $data['meta'] : [];
     }
 
+    public function getDisplayPath(): string
+    {
+        $path         = wp_normalize_path($this->path);
+        $real_wp_root = rtrim(wp_normalize_path(realpath(ABSPATH)), '/');
+
+        if (empty($_SERVER['DOCUMENT_ROOT'])) {
+            return $path;
+        }
+        $doc_root = rtrim(wp_normalize_path($_SERVER['DOCUMENT_ROOT']), '/');
+
+        if (basename($real_wp_root) === basename($doc_root) && str_starts_with($path, $real_wp_root)) {
+            return $doc_root . substr($path, strlen($real_wp_root));
+        }
+
+        return $path;
+    }
+
     public function toArray(): array
     {
         return [
             'id'           => $this->id,
             'name'         => $this->name,
-            'path'         => wp_normalize_path($this->path),
+            'path'         => $this->getDisplayPath(),
             'remoteUrl'    => $this->remoteUrl,
             'authType'     => $this->authType,
             'meta'         => $this->meta,
