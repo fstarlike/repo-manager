@@ -318,6 +318,27 @@ class GitManager {
         this.updateFileBrowserHeight();
     }
 
+    updateFileBrowserHeight() {
+        const fileBrowser = document.querySelector(
+            "#directory-selector-modal .file-browser"
+        );
+        if (!fileBrowser) return;
+
+        const modalBody = fileBrowser.closest(".git-modal-body");
+        if (!modalBody) return;
+
+        const modalRect = modalBody.getBoundingClientRect();
+        const fileBrowserRect = fileBrowser.getBoundingClientRect();
+
+        const newHeight =
+            window.innerHeight -
+            modalRect.top -
+            (modalRect.height - fileBrowserRect.height) -
+            100;
+
+        fileBrowser.style.maxHeight = `${Math.max(200, newHeight)}px`;
+    }
+
     /**
      * Setup keyboard shortcuts
      */

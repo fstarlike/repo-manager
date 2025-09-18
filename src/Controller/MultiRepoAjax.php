@@ -459,7 +459,7 @@ class MultiRepoAjax
 
         }
 
-        if (! RepositoryManager::instance()->validatePath($absolutePath)) {
+        if (! $this->repositoryManager->validatePath($absolutePath)) {
             wp_send_json_error('Invalid path');
         }
 
@@ -520,7 +520,7 @@ class MultiRepoAjax
             }
 
             // Validate the final target path
-            if (! RepositoryManager::instance()->validatePath($absolutePath)) {
+            if (! $this->repositoryManager->validatePath($absolutePath)) {
                 wp_send_json_error('Invalid target path');
             }
 
@@ -699,7 +699,12 @@ class MultiRepoAjax
         $webhook    = sanitize_text_field(wp_unslash($_POST['webhook'] ?? ''));
 
         // Update repository details
-        $repo = RepositoryManager::update($id, $name, $remoteUrl, $autoDeploy, $webhook);
+        $repo = $this->repositoryManager->update($id, [
+            'name'       => $name,
+            'remoteUrl'  => $remoteUrl,
+            'autoDeploy' => $autoDeploy,
+            'webhook'    => $webhook,
+        ]);
         if (! $repo instanceof Repository) {
             wp_send_json_error('Failed to update repository.');
         }
@@ -724,8 +729,7 @@ class MultiRepoAjax
 
         $id = $this->getRepositoryId();
 
-        $manager = RepositoryManager::instance();
-        $repo    = $manager->get($id);
+        $repo = $this->repositoryManager->get($id);
 
         if (!$repo instanceof Repository) {
             wp_send_json_error('Repository not found');
@@ -734,7 +738,7 @@ class MultiRepoAjax
         $repo_name = $repo->name;
 
         // Delete from RepositoryManager
-        if (! $manager->delete($id)) {
+        if (! $this->repositoryManager->delete($id)) {
             wp_send_json_error('Failed to remove repository from manager');
         }
 
@@ -817,7 +821,7 @@ class MultiRepoAjax
         // Add repository name to the target path
         $absoluteTarget = rtrim($absoluteTarget, '/\\') . DIRECTORY_SEPARATOR . $name;
 
-        if (! RepositoryManager::instance()->validatePath(dirname($absoluteTarget))) {
+        if (! $this->repositoryManager->validatePath(dirname($absoluteTarget))) {
             wp_send_json_error('Invalid target parent directory');
         }
 
@@ -955,7 +959,7 @@ class MultiRepoAjax
             $absolutePath = ABSPATH . ltrim($path, '/');
         }
 
-        if (! RepositoryManager::instance()->validatePath($absolutePath)) {
+        if (! $this->repositoryManager->validatePath($absolutePath)) {
             wp_send_json_error('Invalid path');
         }
 
