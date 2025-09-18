@@ -27,6 +27,10 @@ class Repository
 
     public function __construct(array $data)
     {
+        echo '<pre>';
+        var_dump($data);
+        echo '</pre>';
+        die;
         $this->id        = $data['id'] ?? wp_generate_uuid4();
         $this->name      = $data['name'] ?? 'Repository';
         $this->path      = rtrim($data['path'] ?? '', '\\/');
