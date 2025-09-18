@@ -769,10 +769,14 @@ class MultiRepoAjax
             wp_send_json_error('The specified path is not a valid Git repository.');
         }
 
+        // Try to get remote URL automatically
+        $remoteUrlResult = SecureGitRunner::runInDirectory($absolutePath, 'config --get remote.origin.url');
+        $remoteUrl       = ($remoteUrlResult['success'] && !empty($remoteUrlResult['output'])) ? trim($remoteUrlResult['output']) : '';
+
         $repoData = [
             'name'      => $name ?: basename($absolutePath),
             'path'      => $absolutePath,
-            'remoteUrl' => '', // Will be fetched later if needed
+            'remoteUrl' => $remoteUrl,
             'authType'  => 'none',
         ];
 
