@@ -1729,100 +1729,70 @@ class GitManager {
             ? "git_manager_add_existing_repo"
             : "git_manager_add_repository";
 
-        const formData = new FormData(form);
-        formData.append("action", action);
-        formData.append("nonce", gitManagerAjax.nonce);
-
         if (!this.validateAddRepositoryForm(form)) {
             return;
         }
 
-        const repoName = form.querySelector('[name="repo_name"]').value.trim();
-        const repoPath = form.querySelector('[name="repo_path"]').value.trim();
-        const authType = form.querySelector(
-            'input[name="auth_type"]:checked'
-        ).value;
+        // Explicitly construct payload to ensure correct keys are sent
+        const payload = {
+            repo_path: form.querySelector('[name="repo_path"]').value,
+            repo_name: "", // Name is inferred on the backend
+        };
 
-        // Show loading state
-        const submitBtn = form.querySelector('button[type="submit"]');
-        const originalText = submitBtn.innerHTML;
-        submitBtn.innerHTML = `
-            <div class="progress-spinner" style="width: 16px; height: 16px; border-width: 2px;"></div>
-            Adding Repository...
-        `;
-        submitBtn.disabled = true;
+        if (!isExisting) {
+            payload.repo_url = form.querySelector('[name="repo_url"]').value;
+            payload.repo_branch = form.querySelector(
+                '[name="repo_branch"]'
+            ).value;
 
-        try {
-            // Real AJAX call to WordPress backend
-            const ajaxData = {
-                action: gitManagerAjax.actions.add_repository,
-                nonce: gitManagerAjax.nonce,
-                name: repoName,
-                path: repoPath,
-                authType: authType,
-            };
-
-            // Handle authentication
-            const isPrivateRepo = form.querySelector(
+            const isPrivate = form.querySelector(
                 '[name="private_repo"]'
             ).checked;
-            const authType = authType || "ssh";
-
-            if (isPrivateRepo) {
-                if (authType === "ssh") {
-                    const privateKey = form.querySelector(
+            if (isPrivate) {
+                payload.auth_type = form.querySelector(
+                    '[name="auth_type"]:checked'
+                ).value;
+                if (payload.auth_type === "ssh") {
+                    payload.private_key = form.querySelector(
                         '[name="private_key"]'
                     ).value;
-                    if (!privateKey || !privateKey.trim()) {
-                        throw new Error(
-                            "SSH private key is required for private repositories"
-                        );
-                    }
-                } else if (authType === "https") {
-                    const username =
+                } else {
+                    payload.username =
                         form.querySelector('[name="username"]').value;
-                    const token = form.querySelector('[name="token"]').value;
-
-                    if (!username || !token) {
-                        throw new Error(
-                            "Username and personal access token are required for HTTPS authentication"
-                        );
-                    }
-
-                    ajaxData.username = username;
-                    ajaxData.token = token;
+                    payload.token = form.querySelector('[name="token"]').value;
                 }
             }
+        }
 
-            const response = await fetch(gitManagerAjax.ajaxurl, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/x-www-form-urlencoded",
-                },
-                body: new URLSearchParams(ajaxData),
-            });
+        // Show loading state
+        this.showProgress("Adding repository...");
+        const submitButton = form.querySelector('button[type="submit"]');
+        this.setButtonLoadingState(submitButton, true);
 
-            const result = await response.json();
+        try {
+            const result = await this.apiCall(action, payload);
 
             if (result.success) {
                 this.showNotification(
-                    "Repository added successfully!",
+                    result.data.message || "Repository added successfully",
                     "success"
                 );
+                this.refreshRepositoryList();
                 this.hideAddRepositorySection();
-                this.loadRepositories(); // Reload the repository list
+                if (result.data.repo && result.data.repo.id) {
+                    this.selectRepository(result.data.repo.id);
+                }
             } else {
                 throw new Error(result.data || "Failed to add repository");
             }
         } catch (error) {
             this.showNotification(
-                "Failed to add repository: " + error.message,
+                `Failed to add repository: ${error.message}`,
                 "error"
             );
         } finally {
-            // Restore button state
-            submitBtn.innerHTML = originalText;
-            submitBtn.disabled = false;
+            this.hideProgress();
+            this.setButtonLoadingState(submitButton, false);
         }
     }
 
