@@ -156,7 +156,7 @@ class AuditLogger
         $logs = get_option(self::LOG_OPTION, []);
 
         // Apply filters
-        if ($filters !== []) {
+        if ([] !== $filters) {
             $logs = array_filter($logs, function ($log) use ($filters) {
                 foreach ($filters as $key => $value) {
                     if (isset($log[$key]) && $log[$key] !== $value) {
@@ -169,7 +169,7 @@ class AuditLogger
         }
 
         // Sort by timestamp (newest first)
-        usort($logs, fn($a, $b) => strtotime($b['timestamp']) - strtotime($a['timestamp']));
+        usort($logs, fn ($a, $b) => strtotime($b['timestamp']) - strtotime($a['timestamp']));
 
         return array_slice($logs, $offset, $limit);
     }
@@ -276,7 +276,7 @@ class AuditLogger
         $cutoffTime = strtotime(sprintf('-%d hours', $hours));
         $logs       = get_option(self::LOG_OPTION, []);
 
-        return array_filter($logs, fn($log) => 'warning' === $log['level'] && 'security_event' === $log['action'] && strtotime($log['timestamp']) > $cutoffTime);
+        return array_filter($logs, fn ($log) => 'warning' === $log['level'] && 'security_event' === $log['action'] && strtotime($log['timestamp']) > $cutoffTime);
     }
 
     /**
@@ -287,7 +287,7 @@ class AuditLogger
         $cutoffTime = strtotime(sprintf('-%d days', $days));
         $logs       = get_option(self::LOG_OPTION, []);
 
-        $userLogs = array_filter($logs, fn($log) => $log['user_id'] == $userId && strtotime($log['timestamp']) > $cutoffTime);
+        $userLogs = array_filter($logs, fn ($log) => $log['user_id'] == $userId && strtotime($log['timestamp']) > $cutoffTime);
 
         $activity = [
             'total_actions'   => count($userLogs),
@@ -381,7 +381,7 @@ class AuditLogger
      */
     private function exportToCsv(array $logs): string
     {
-        if ($logs === []) {
+        if ([] === $logs) {
             return '';
         }
 

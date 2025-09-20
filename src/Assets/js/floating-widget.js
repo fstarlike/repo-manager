@@ -1640,10 +1640,11 @@
         }
 
         startPolling() {
-            // Poll for new commits every 30 seconds
+            // Poll for new commits every ~8 hours; skip when page hidden
             setInterval(() => {
+                if (document.hidden) return;
                 this.checkAllRepositoriesForUpdates();
-            }, 30000);
+            }, 28800000);
 
             // Clean up expired dismissals every 5 minutes
             setInterval(() => {
@@ -1655,6 +1656,13 @@
                 this.isInitializing = false; // Mark initialization as complete
                 this.checkAllRepositoriesForUpdates();
             }, 1000); // Check after 1 second instead of waiting
+
+            // Refresh when tab becomes visible again
+            document.addEventListener("visibilitychange", () => {
+                if (!document.hidden) {
+                    this.checkAllRepositoriesForUpdates();
+                }
+            });
         }
 
         clearAllBackgroundStatusNotifications() {
@@ -1680,7 +1688,7 @@
             try {
                 const response = await this.makeAjaxRequest(
                     "git_manager_bulk_repo_status",
-                    {}
+                    { use_cache: "1" }
                 );
 
                 if (response.success && response.data) {

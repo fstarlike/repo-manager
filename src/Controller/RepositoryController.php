@@ -36,7 +36,6 @@ class RepositoryController
         add_action('wp_ajax_git_manager_repo_list', [$this, 'list']);
         add_action('wp_ajax_git_manager_get_repos', [$this, 'list']);
         add_action('wp_ajax_git_manager_repo_add', [$this, 'add']);
-        add_action('wp_ajax_git_manager_add_repository', [$this, 'add']);
         add_action('wp_ajax_git_manager_repo_update', [$this, 'update']);
         add_action('wp_ajax_git_manager_repo_delete', [$this, 'delete']);
         add_action('wp_ajax_git_manager_delete_repo', [$this, 'delete']);
@@ -353,8 +352,8 @@ class RepositoryController
                 throw new \Exception('Invalid repository path');
             }
 
-            // Check if it's a valid Git repository
-            if (!is_dir($path . '/.git')) {
+            // Check if it's a valid Git repository (supports .git dir or file)
+            if (! \WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($path)) {
                 throw new \Exception('Not a valid Git repository');
             }
 
@@ -425,10 +424,13 @@ class RepositoryController
         }
 
         if (isset($data['path'])) {
-            $validated['path'] = sanitize_text_field(wp_unslash($data['path']));
-            if (empty($validated['path'])) {
+            $rawPath = sanitize_text_field(wp_unslash($data['path']));
+            if (empty($rawPath)) {
                 throw new \Exception('Repository path is required');
             }
+
+            // Resolve the path to an absolute path before validation and saving.
+            $validated['path'] = $this->repositoryManager->resolvePath($rawPath);
 
             if (!$this->repositoryManager->validatePath($validated['path'])) {
                 throw new \Exception('Invalid repository path');
@@ -452,7 +454,7 @@ class RepositoryController
     private function cloneRepository(string $url, string $path, string $branch = ''): array
     {
         $clone = SecureGitRunner::cloneRepository($url, $path);
-        if ($branch !== '' && $branch !== '0' && ($clone['success'] ?? false)) {
+        if ('' !== $branch && '0' !== $branch && ($clone['success'] ?? false)) {
             $checkout = SecureGitRunner::runInDirectory($path, 'checkout ' . escapeshellarg($branch));
             if (!$checkout['success']) {
                 return [

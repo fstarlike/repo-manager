@@ -3,6 +3,10 @@
 use WPGitManager\Admin\GitManager;
 use WPGitManager\Controller\MultiRepoAjax;
 use WPGitManager\Infrastructure\Autoloader;
+use WPGitManager\Service\AuditLogger;
+use WPGitManager\Service\CredentialStore;
+use WPGitManager\Service\RateLimiter;
+use WPGitManager\Service\SystemStatus;
 use WPGitManager\View\Components\FloatingWidget;
 
 /**
@@ -186,7 +190,11 @@ add_action('admin_menu', function () {
 
 add_action('init', function () {
     if (is_admin() && class_exists(MultiRepoAjax::class)) {
-        (new MultiRepoAjax())->register();
+        $rateLimiter     = RateLimiter::instance();
+        $auditLogger     = AuditLogger::instance();
+        $credentialStore = new CredentialStore();
+        $systemStatus    = new SystemStatus();
+        new MultiRepoAjax($rateLimiter, $auditLogger, $credentialStore, $systemStatus);
     }
 });
 

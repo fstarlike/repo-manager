@@ -215,7 +215,7 @@ $font-sizes: (
     // 36px
     "5xl": 3rem,
     // 48px
-    "6xl": 3.75rem // 60px,,,,,,,,
+    "6xl": 3.75rem // 60px,,,,,,,,,,,,,,,,,,
 );
 
 $font-weights: (
@@ -271,7 +271,7 @@ $spacing: (
     // 192px
     56: 14rem,
     // 224px
-    64: 16rem // 256px,,,,,,,,
+    64: 16rem // 256px,,,,,,,,,,,,,,,,,,
 );
 
 // Border Radius
@@ -352,15 +352,15 @@ $z-index: (
     auto: auto,
     base: 0,
     docked: 10,
-    dropdown: 1000,
-    sticky: 1100,
-    banner: 1200,
-    overlay: 1300,
-    modal: 1400,
-    popover: 1500,
-    skipLink: 1600,
-    toast: 1700,
-    tooltip: 1800,
+    dropdown: 9000,
+    sticky: 9100,
+    banner: 9200,
+    overlay: 9300,
+    modal: 9400,
+    popover: 9500,
+    skipLink: 9600,
+    toast: 9700,
+    tooltip: 9800,
 );
 
 // Breakpoints
@@ -407,12 +407,11 @@ $animation-easing: (
 
 // Helper Functions
 @use "sass:map";
+@use "sass:string";
 
 @function color($name, $theme: "light") {
-    @if $theme == "dark" {
-        @return map.get($dark-colors, $name);
-    }
-    @return map.get($colors, $name);
+    // Return CSS custom property to enable runtime theme switching
+    @return string.unquote("var(--gm-#{$name})");
 }
 
 @function spacing($size) {
@@ -503,8 +502,8 @@ $animation-easing: (
     --gm-primary-hover: var(--gm-primary-dark);
 }
 
-// Dark theme
-[data-theme="dark"] {
+// Dark theme (higher specificity to override :root even if loaded earlier/later)
+html[data-theme="dark"] {
     @each $name, $value in $dark-colors {
         --gm-#{$name}: #{$value};
     }

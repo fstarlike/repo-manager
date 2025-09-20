@@ -11,7 +11,7 @@ if (! defined('ABSPATH')) {
  */
 class RateLimiter
 {
-    private const RATE_LIMIT_OPTION      = 'git_manager_rate_limits';
+    private const RATE_LIMIT_OPTION = 'git_manager_rate_limits';
 
     private const RATE_LIMIT_KEYS_OPTION = 'git_manager_rate_limit_keys';
 
@@ -53,7 +53,7 @@ class RateLimiter
         $userLimits = $limits[$key] ?? [];
 
         // Clean old entries
-        $userLimits = array_filter($userLimits, fn($timestamp) => $timestamp > $windowStart);
+        $userLimits = array_filter($userLimits, fn ($timestamp) => $timestamp > $windowStart);
 
         // Check if limit exceeded
         if (count($userLimits) >= $maxRequests) {
@@ -91,7 +91,7 @@ class RateLimiter
         $userLimits = $limits[$key] ?? [];
 
         // Clean old entries
-        $userLimits = array_filter($userLimits, fn($timestamp) => $timestamp > $windowStart);
+        $userLimits = array_filter($userLimits, fn ($timestamp) => $timestamp > $windowStart);
 
         return max(0, $maxRequests - count($userLimits));
     }
@@ -113,10 +113,10 @@ class RateLimiter
         $userLimits = $limits[$key] ?? [];
 
         // Clean old entries
-        $userLimits = array_filter($userLimits, fn($timestamp) => $timestamp > $windowStart);
+        $userLimits = array_filter($userLimits, fn ($timestamp) => $timestamp > $windowStart);
 
         $nextReset = null;
-        if ($userLimits !== []) {
+        if ([] !== $userLimits) {
             $oldestRequest = min($userLimits);
             $nextReset     = $oldestRequest + $windowSeconds;
         }
@@ -181,9 +181,9 @@ class RateLimiter
             $stats['total_identifiers']++;
 
             // Clean old entries
-            $activeLimits = array_filter($userLimits, fn($timestamp) => $timestamp > $windowStart);
+            $activeLimits = array_filter($userLimits, fn ($timestamp) => $timestamp > $windowStart);
 
-            if ($activeLimits !== []) {
+            if ([] !== $activeLimits) {
                 $stats['active_identifiers']++;
                 $stats['total_requests'] += count($activeLimits);
 
@@ -287,9 +287,9 @@ class RateLimiter
         $cleaned       = 0;
 
         foreach ($limits as $key => $userLimits) {
-            $activeLimits = array_filter($userLimits, fn($timestamp) => $timestamp > $windowStart);
+            $activeLimits = array_filter($userLimits, fn ($timestamp) => $timestamp > $windowStart);
 
-            if ($activeLimits === []) {
+            if ([] === $activeLimits) {
                 unset($limits[$key]);
                 $cleaned++;
             } else {
@@ -342,7 +342,7 @@ class RateLimiter
     public function removeFromWhitelist(string $identifier): void
     {
         $whitelist = get_option('git_manager_rate_limit_whitelist', []);
-        $whitelist = array_filter($whitelist, fn($item) => $item !== $identifier);
+        $whitelist = array_filter($whitelist, fn ($item) => $item !== $identifier);
         update_option('git_manager_rate_limit_whitelist', array_values($whitelist), false);
     }
 

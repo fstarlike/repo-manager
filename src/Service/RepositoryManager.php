@@ -20,6 +20,8 @@ class RepositoryManager
     /** @var Repository[] */
     private array $cache = [];
 
+    private bool $loaded = false;
+
     private static ?self $instance = null;
 
     public static function instance(): self
@@ -29,7 +31,16 @@ class RepositoryManager
 
     private function __construct()
     {
+    }
+
+    private function ensureLoaded(): void
+    {
+        if ($this->loaded) {
+            return;
+        }
+
         $this->load();
+        $this->loaded = true;
     }
 
     private function load(): void
@@ -40,11 +51,19 @@ class RepositoryManager
         }
 
         $this->cache = [];
+        $unique_paths = [];
+
         foreach ($stored as $item) {
             if (is_array($item)) {
                 $repo = new Repository($item);
                 if ('' !== $repo->path && '0' !== $repo->path) {
+                    // Prevent adding duplicates based on path
+                    if (isset($unique_paths[$repo->path])) {
+                        continue;
+                    }
+
                     $this->cache[$repo->id] = $repo;
+                    $unique_paths[$repo->path] = true;
                 }
             }
         }
@@ -63,16 +82,19 @@ class RepositoryManager
     /** @return Repository[] */
     public function all(): array
     {
+        $this->ensureLoaded();
         return array_values($this->cache);
     }
 
     public function get(string $id): ?Repository
     {
+        $this->ensureLoaded();
         return $this->cache[$id] ?? null;
     }
 
     public function getActiveId(): ?string
     {
+        $this->ensureLoaded();
         $id = get_option(self::ACTIVE_KEY);
 
         return $id && isset($this->cache[$id]) ? $id : null;
@@ -80,6 +102,7 @@ class RepositoryManager
 
     public function setActive(string $id): bool
     {
+        $this->ensureLoaded();
         if (! isset($this->cache[$id])) {
             return false;
         }
@@ -91,6 +114,7 @@ class RepositoryManager
 
     public function add(array $data): Repository
     {
+        $this->ensureLoaded();
         $repo                   = new Repository($data);
         $this->cache[$repo->id] = $repo;
         $this->persist();
@@ -100,6 +124,7 @@ class RepositoryManager
 
     public function update(string $id, array $data): ?Repository
     {
+        $this->ensureLoaded();
         $repo = $this->get($id);
         if (!$repo instanceof Repository) {
             return null;
@@ -118,6 +143,7 @@ class RepositoryManager
 
     public function delete(string $id): bool
     {
+        $this->ensureLoaded();
         if (! isset($this->cache[$id])) {
             return false;
         }
@@ -132,22 +158,30 @@ class RepositoryManager
         return true;
     }
 
+    /**
+     * Resolve a potentially relative path to a full, canonical path.
+     *
+     * @param string $path The path to resolve.
+     * @return string The resolved absolute path.
+     */
+    public function resolvePath(string $path): string
+    {
+        // Trim whitespace and quotes, then normalize slashes
+        $path = wp_normalize_path(trim($path, " \t\n\r\0\x0B\"'"));
+
+        // If path is already an absolute path, just return it
+        if (path_is_absolute($path)) {
+            return $path;
+        }
+
+        // It's a relative path, so resolve it relative to the WordPress root
+        return wp_normalize_path(ABSPATH . ltrim($path, '/'));
+    }
+
     /** Basic path security: ensure requested path stays inside ABSPATH unless user has manage_options */
     public function validatePath(string $path): bool
     {
-        $absolutePath = $path;
-
-        if (0 === strpos($path, '/wp-content') || 0 === strpos($path, '/wp-admin') || 0 === strpos($path, '/wp-includes')) {
-            $absolutePath = ABSPATH . ltrim($path, '/');
-
-        } elseif (! path_is_absolute($path)) {
-            $absolutePath = ABSPATH . $path;
-
-        } else {
-
-        }
-
-        $real = realpath($absolutePath);
+        $real = realpath($path);
 
         if ($real) {
             $real = rtrim($real, '\\/');
@@ -159,7 +193,7 @@ class RepositoryManager
 
             return 0 === strpos($real, $root);
         } else {
-            $parent = dirname($absolutePath);
+            $parent = dirname($path);
             $real   = realpath($parent);
 
             if (! $real) {
@@ -183,6 +217,7 @@ class RepositoryManager
      */
     public function cleanupLegacyData(): void
     {
+        $this->ensureLoaded();
         delete_option('git_manager_repo_path');
         delete_option('git_manager_repos');
 

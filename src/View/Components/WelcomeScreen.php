@@ -18,7 +18,7 @@ class WelcomeScreen
                         <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16" class="git-icon-left">
                             <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
                         </svg>
-                        <?php echo esc_html__('Add Your First Repository', 'repo-manager'); ?>
+                        <?php echo esc_html__('Add a Repository', 'repo-manager'); ?>
                     </button>
                     <a href="#" onclick="window.open(this.href); return false;" target="_blank" class="git-action-btn git-secondary-btn git-troubleshoot-btn">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

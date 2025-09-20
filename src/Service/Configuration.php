@@ -396,7 +396,7 @@ class Configuration
         }
 
         $validationErrors = self::validate($data['configuration']);
-        if ($validationErrors !== []) {
+        if ([] !== $validationErrors) {
             return $validationErrors;
         }
 

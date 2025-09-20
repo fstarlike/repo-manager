@@ -60,7 +60,7 @@ class Dashboard
                         <div class="repo-manager-commands-modal" role="dialog" aria-modal="true" aria-labelledby="gm-commands-modal-title">
                             <div class="repo-manager-commands-modal-header">
                                 <h3 id="gm-commands-modal-title"><?php echo esc_html__('Command execution is disabled', 'repo-manager'); ?></h3>
-                                <button type="button" class="gm-modal-close" id="gm-commands-close-btn" aria-label="<?php echo esc_attr__('Close', 'repo-manager'); ?>">×</button>
+                                <button type="button" class="gm-modal-close" id="gm-commands-close-btn" aria-label="<?php echo esc_attr__('Close', 'repo-manager'); ?>">&times;</button>
                             </div>
                             <div class="repo-manager-commands-modal-body">
                                 <p><?php echo esc_html__('To use Repo Manager features (fetch, pull, push, status), you need to enable command execution. Go to Settings → Command Execution and turn it on. Only enable this on trusted servers, as it allows the plugin to run git commands on your server.', 'repo-manager'); ?></p>

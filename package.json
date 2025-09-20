@@ -4,9 +4,10 @@
   "description": "WordPress Repo Manager Plugin - SCSS Build Pipeline",
   "scripts": {
     "build": "npm run build:css && npm run build:js",
-    "build:css": "npm run build:admin && npm run build:fw",
+    "build:css": "npm run build:admin && npm run build:fw && npm run build:status",
     "build:admin": "sass src/Assets/scss/admin.scss:dist/css/admin.css --style=compressed --source-map",
     "build:fw": "sass src/Assets/scss/floating-widget.scss:dist/css/floating-widget.css --style=compressed --source-map",
+    "build:status": "sass src/Assets/scss/status.scss:dist/css/status.css --style=compressed --source-map",
     "build:js": "webpack --mode=production",
     "dev": "npm run dev:css & npm run dev:js",
     "dev:css": "sass src/Assets/scss/admin.scss:dist/css/admin.css --watch --source-map",

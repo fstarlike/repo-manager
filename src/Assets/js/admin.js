@@ -25,7 +25,19 @@ function getTranslation(key, fallback = "") {
 
 class GitManager {
     constructor() {
+        // Debounce utility
+        this.debounce = (func, delay) => {
+            let timeout;
+            return function (...args) {
+                const context = this;
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(context, args), delay);
+            };
+        };
+
+        this.repositories = [];
         this.currentRepo = null;
+        this.activeTab = "overview";
         this.detailsRequestSeq = 0;
         this.detailsAbortController = null;
         this._repoListPoller = null;
@@ -37,13 +49,42 @@ class GitManager {
         this.directorySelectorTarget = "#add-repo-path";
         // Initialize theme from storage (defaults handled in getStoredTheme)
         this.theme = this.getStoredTheme();
-        this.init();
+        this.urlAutofillTimer = null; // Debounce timer for URL autofill
+        this._initialized = false; // Ensure init runs only once
+        this._ajaxWaitAttempts = 0; // Retry counter for waiting gitManagerAjax
+
+        // Bind handlers BEFORE initialization so event listeners use bound methods
+        this.handleGlobalClick = this.handleGlobalClick.bind(this);
+        this.handleGlobalKeydown = this.handleGlobalKeydown.bind(this);
+        this.handleFormSubmit = this.handleFormSubmit.bind(this);
+
+        this.selectRepository = this.selectRepository.bind(this);
+
+        // Initialize when DOM is ready; if already ready, run now
+        console.log(document.readyState);
+
+        if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", () => this.init());
+        } else {
+            this.init();
+        }
     }
 
     init() {
         try {
-            // Check if AJAX data is available before proceeding
+            // Avoid double initialization
+            if (this._initialized) return;
+
+            // Ensure AJAX data is available; retry briefly if not yet defined
             if (typeof gitManagerAjax === "undefined") {
+                if (this._ajaxWaitAttempts < 30) {
+                    this._ajaxWaitAttempts++;
+                    setTimeout(() => this.init(), 100);
+                } else {
+                    console.warn(
+                        "GitManager: gitManagerAjax not found; initialization skipped after retries."
+                    );
+                }
                 return;
             }
 
@@ -63,6 +104,9 @@ class GitManager {
             setInterval(() => {
                 this.ensureButtonFunctionality();
             }, 5000); // Check every 5 seconds
+
+            // Mark as initialized before starting background updates
+            this._initialized = true;
 
             // Start lightweight polling to keep UI live on slow hosts
             this.startLiveUpdates();
@@ -94,6 +138,8 @@ class GitManager {
                     );
                 }
             }, 50);
+            this.handleModalBackdropClick =
+                this.handleModalBackdropClick.bind(this);
         } catch (error) {}
     }
 
@@ -102,10 +148,8 @@ class GitManager {
      */
     setupEventListeners() {
         // Global event delegation
-        document.addEventListener("click", (e) => this.handleGlobalClick(e));
-        document.addEventListener("keydown", (e) =>
-            this.handleGlobalKeydown(e)
-        );
+        document.addEventListener("click", this.handleGlobalClick);
+        document.addEventListener("keydown", this.handleGlobalKeydown);
 
         // Window events
         window.addEventListener(
@@ -114,14 +158,37 @@ class GitManager {
         );
 
         // Form submissions
-        document.addEventListener("submit", (e) => this.handleFormSubmit(e));
+        document.addEventListener("submit", this.handleFormSubmit);
 
         // Modal backdrop clicks
-        document.addEventListener("click", (e) => {
-            if (e.target.classList.contains("git-modal-overlay")) {
-                this.closeModal(e.target.dataset.modalId);
+        document.addEventListener("click", this.handleModalBackdropClick);
+
+        // Add repository form - toggle branch field visibility
+        const addRepoForm = document.getElementById("add-repo-form");
+        if (addRepoForm) {
+            const isExistingCheckbox = addRepoForm.querySelector(
+                'input[name="existing_repo"]'
+            );
+            const branchInput = addRepoForm.querySelector(
+                'input[name="repo_branch"]'
+            );
+
+            if (isExistingCheckbox && branchInput) {
+                const branchInputContainer = branchInput.closest(".form-group");
+
+                if (branchInputContainer) {
+                    isExistingCheckbox.addEventListener("change", (e) => {
+                        branchInputContainer.style.display = e.target.checked
+                            ? "none"
+                            : "";
+                    });
+
+                    // Set initial state
+                    branchInputContainer.style.display =
+                        isExistingCheckbox.checked ? "none" : "";
+                }
             }
-        });
+        }
     }
 
     /**
@@ -301,6 +368,29 @@ class GitManager {
                 this.positionModal(modal);
             }
         });
+
+        this.updateFileBrowserHeight();
+    }
+
+    updateFileBrowserHeight() {
+        const fileBrowser = document.querySelector(
+            "#directory-selector-modal .file-browser"
+        );
+        if (!fileBrowser) return;
+
+        const modalBody = fileBrowser.closest(".git-modal-body");
+        if (!modalBody) return;
+
+        const modalRect = modalBody.getBoundingClientRect();
+        const fileBrowserRect = fileBrowser.getBoundingClientRect();
+
+        const newHeight =
+            window.innerHeight -
+            modalRect.top -
+            (modalRect.height - fileBrowserRect.height) -
+            100;
+
+        fileBrowser.style.maxHeight = `${Math.max(200, newHeight)}px`;
     }
 
     /**
@@ -539,35 +629,9 @@ class GitManager {
 
         const parsedData = this.parseGitUrl(url.trim());
 
-        if (parsedData) {
-            // Auto-populate path if it's empty or user hasn't manually edited it
-            if (
-                pathInput &&
-                (!pathInput.value || pathInput.dataset.autoFilled === "true")
-            ) {
-                pathInput.value = parsedData.suggestedPath;
-                pathInput.dataset.autoFilled = "true";
-                this.addAutoFilledIndicator(pathInput);
-            }
-
-            // Auto-populate branch if it's empty or user hasn't manually edited it
-            if (
-                branchInput &&
-                (!branchInput.value ||
-                    branchInput.dataset.autoFilled === "true")
-            ) {
-                branchInput.value = parsedData.defaultBranch;
-                branchInput.dataset.autoFilled = "true";
-                this.addAutoFilledIndicator(branchInput);
-            }
-
-            // Show a subtle notification that fields were auto-filled
-            if (parsedData.suggestedPath || parsedData.defaultBranch) {
-                this.showAutoFillNotification(parsedData);
-            }
-        } else {
-            // URL couldn't be parsed - show helpful message
-            this.showUrlParseError(url);
+        // Do not autofill if there's no valid data or if user has already manually edited the path/branch
+        if (!parsedData.name) {
+            return;
         }
     }
 
@@ -1660,21 +1724,12 @@ class GitManager {
         }
 
         // Browse path button
-        const browseBtn = document.getElementById("browse-path-btn");
+        const browseBtn = document.getElementById("add-repo-browse-path");
         if (browseBtn) {
             browseBtn.onclick = () => {
                 // Ensure the target is set correctly for add repository
                 this.directorySelectorTarget = "#add-repo-path";
                 this.browsePath(this.directorySelectorTarget);
-            };
-        }
-
-        // Form submission
-        const form = document.getElementById("add-repo-form");
-        if (form) {
-            form.onsubmit = (e) => {
-                e.preventDefault();
-                this.handleAddRepositorySubmit(form);
             };
         }
 
@@ -1696,242 +1751,75 @@ class GitManager {
      * Handle Add Repository Form Submission
      */
     async handleAddRepositorySubmit(form) {
-        const formData = new FormData(form);
-        const data = Object.fromEntries(formData.entries());
+        const isExisting = form.querySelector('[name="existing_repo"]').checked;
+        const action = isExisting
+            ? "git_manager_add_existing_repo"
+            : "git_manager_add_repository";
 
-        // Check if this is an existing repository
-        const isExistingRepo = data.existing_repo === "on";
-
-        // Validate form - URL is only required for new repositories
-        if (!data.repo_path) {
-            this.showNotification(
-                "Please fill in the local path field",
-                "error"
-            );
+        if (!this.validateAddRepositoryForm(form)) {
             return;
         }
 
-        if (!isExistingRepo && !data.repo_url) {
-            this.showNotification(
-                "Please fill in the repository URL field",
-                "error"
-            );
-            return;
-        }
+        // Explicitly construct payload to ensure correct keys are sent
+        const payload = {
+            repo_path: form.querySelector('[name="repo_path"]').value,
+            repo_name: "", // Name is inferred on the backend
+        };
 
-        // Validate private repository authentication
-        const isPrivateRepo = data.private_repo === "on";
-        if (isPrivateRepo) {
-            const authType = data.auth_type;
+        if (!isExisting) {
+            payload.repo_url = form.querySelector('[name="repo_url"]').value;
+            payload.repo_branch = form.querySelector(
+                '[name="repo_branch"]'
+            ).value;
 
-            if (!authType) {
-                this.showNotification(
-                    "Please select an authentication method",
-                    "error"
-                );
-                return;
-            }
-
-            if (authType === "ssh") {
-                if (!data.private_key || !data.private_key.trim()) {
-                    // If SSH URL is used but no SSH key provided, suggest switching to HTTPS
-                    if (data.repo_url && data.repo_url.startsWith("git@")) {
-                        this.showNotification(
-                            "SSH URL detected but no SSH key provided. Please either provide an SSH private key or switch to HTTPS authentication.",
-                            "error"
-                        );
-                    } else {
-                        this.showNotification(
-                            "SSH private key is required for SSH authentication. Please provide a private key or switch to HTTPS authentication.",
-                            "error"
-                        );
-                    }
-                    return;
-                }
-
-                // Basic SSH key validation
-                const sshKeyPattern =
-                    /^-----BEGIN (OPENSSH|RSA|DSA|EC) PRIVATE KEY-----/;
-                if (!sshKeyPattern.test(data.private_key.trim())) {
-                    this.showNotification(
-                        "Please enter a valid SSH private key",
-                        "error"
-                    );
-                    return;
-                }
-            } else if (authType === "https") {
-                if (!data.username || !data.username.trim()) {
-                    this.showNotification(
-                        "Username is required for HTTPS authentication",
-                        "error"
-                    );
-                    return;
-                }
-
-                if (!data.token || !data.token.trim()) {
-                    this.showNotification(
-                        "Personal access token is required for HTTPS authentication",
-                        "error"
-                    );
-                    return;
-                }
-
-                // Basic token validation for common patterns
-                const tokenPatterns = [
-                    /^ghp_[A-Za-z0-9_]{36}$/, // GitHub personal access token
-                    /^gho_[A-Za-z0-9_]{36}$/, // GitHub OAuth token
-                    /^ghu_[A-Za-z0-9_]{36}$/, // GitHub user-to-server token
-                    /^ghr_[A-Za-z0-9_]{36}$/, // GitHub refresh token
-                    /^[A-Za-z0-9]{20,}$/, // Generic token pattern
-                ];
-
-                const isValidToken = tokenPatterns.some((pattern) =>
-                    pattern.test(data.token.trim())
-                );
-                if (!isValidToken) {
-                    this.showNotification(
-                        "Please enter a valid personal access token",
-                        "error"
-                    );
-                    return;
+            const isPrivate = form.querySelector(
+                '[name="private_repo"]'
+            ).checked;
+            if (isPrivate) {
+                payload.auth_type = form.querySelector(
+                    '[name="auth_type"]:checked'
+                ).value;
+                if (payload.auth_type === "ssh") {
+                    payload.private_key = form.querySelector(
+                        '[name="private_key"]'
+                    ).value;
+                } else {
+                    payload.username =
+                        form.querySelector('[name="username"]').value;
+                    payload.token = form.querySelector('[name="token"]').value;
                 }
             }
         }
 
         // Show loading state
-        const submitBtn = document.getElementById("submit-add-repo");
-        const originalText = submitBtn.innerHTML;
-        submitBtn.innerHTML = `
-            <svg class="animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-                <path d="M21 12a9 9 0 11-6.219-8.56"/>
-            </svg>
-            Adding Repository...
-        `;
-        submitBtn.disabled = true;
+        this.showProgress("Adding repository...");
+        const submitButton = form.querySelector('button[type="submit"]');
+        this.setButtonLoadingState(submitButton, true);
 
         try {
-            // If existing repo and user has not entered Name/Branch before choosing path,
-            // auto-fill them from the selected repo path
-            if (data.existing_repo === "on") {
-                const urlInput = document.getElementById("add-repo-url");
-                const branchInput = document.getElementById("add-repo-branch");
-                const pathInput = document.getElementById("add-repo-path");
-                const repoPathVal = (pathInput?.value || "").trim();
-                if (repoPathVal) {
-                    const inferredName =
-                        repoPathVal
-                            .split(/[\\\/]/)
-                            .filter(Boolean)
-                            .pop() || "";
-                    if (
-                        urlInput &&
-                        (!urlInput.value || !urlInput.value.trim())
-                    ) {
-                        urlInput.value = inferredName;
-                    }
-                    if (
-                        branchInput &&
-                        (!branchInput.value || !branchInput.value.trim())
-                    ) {
-                        branchInput.value = "main";
-                    }
-                }
-            }
-            // Auto-convert SSH URL to HTTPS if HTTPS credentials are provided
-            let repoUrl = data.repo_url;
-            const isExisting = data.existing_repo === "on";
-            let repoName = "";
-            if (isExisting) {
-                // When existing repo, the field holds the Name (required)
-                repoName = (data.repo_url || "").trim();
-                repoUrl = ""; // server will ignore url for existing
-            }
-            if (
-                data.repo_url &&
-                data.repo_url.startsWith("git@") &&
-                data.auth_type === "https" &&
-                data.username &&
-                data.token
-            ) {
-                // Convert git@github.com:user/repo.git to https://github.com/user/repo.git
-                repoUrl = data.repo_url.replace(
-                    /^git@([^:]+):([^\/]+)\/([^\/]+?)(?:\.git)?$/,
-                    "https://$1/$2/$3.git"
-                );
-            }
-
-            // Prepare the data for AJAX
-            const ajaxData = {
-                action: "git_manager_add_repository",
-                nonce: gitManagerAjax.nonce,
-                repo_url: repoUrl,
-                repo_path: data.repo_path,
-                repo_branch: data.repo_branch || "",
-                existing_repo: data.existing_repo === "on" ? "1" : "0",
-            };
-            if (isExisting) {
-                ajaxData.name = repoName;
-            }
-
-            // Handle authentication for private repositories
-            const isPrivateRepo = data.private_repo === "on";
-            if (isPrivateRepo) {
-                const authType = data.auth_type || "ssh";
-                ajaxData.authType = authType;
-
-                if (authType === "ssh") {
-                    const privateKey = data.private_key;
-                    if (privateKey && privateKey.trim()) {
-                        ajaxData.private_key = privateKey;
-                    } else {
-                        throw new Error(
-                            "SSH private key is required for private repositories"
-                        );
-                    }
-                } else if (authType === "https") {
-                    const username = data.username;
-                    const token = data.token;
-
-                    if (!username || !token) {
-                        throw new Error(
-                            "Username and personal access token are required for HTTPS authentication"
-                        );
-                    }
-
-                    ajaxData.username = username;
-                    ajaxData.token = token;
-                }
-            }
-
-            const response = await fetch(gitManagerAjax.ajaxurl, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/x-www-form-urlencoded",
-                },
-                body: new URLSearchParams(ajaxData),
-            });
-
-            const result = await response.json();
+            const result = await this.apiCall(action, payload);
 
             if (result.success) {
                 this.showNotification(
-                    "Repository added successfully!",
+                    result.data.message || "Repository added successfully",
                     "success"
                 );
+                this.refreshRepositoryList();
                 this.hideAddRepositorySection();
-                this.loadRepositories(); // Reload the repository list
+                if (result.data.repo && result.data.repo.id) {
+                    this.selectRepository(result.data.repo.id);
+                }
             } else {
                 throw new Error(result.data || "Failed to add repository");
             }
         } catch (error) {
             this.showNotification(
-                "Failed to add repository: " + error.message,
+                `Failed to add repository: ${error.message}`,
                 "error"
             );
         } finally {
-            // Restore button state
-            submitBtn.innerHTML = originalText;
-            submitBtn.disabled = false;
+            this.hideProgress();
+            this.setButtonLoadingState(submitButton, false);
         }
     }
 
@@ -2210,12 +2098,6 @@ class GitManager {
             repoList.innerHTML = `
                 <div class="git-repo-empty">
                     <p>No repositories found</p>
-                    <button class="git-action-btn git-clone-btn">
-                        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
-                            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
-                        </svg>
-                        Add Your First Repository
-                    </button>
                 </div>
             `;
 
@@ -2322,9 +2204,15 @@ class GitManager {
     }
 
     createRepoCardHTML(repo) {
-        // Check if repository folder is missing
+        // Problem states first
         if (!repo.folderExists) {
-            return this.createMissingFolderCardHTML(repo);
+            return this.createProblemRepoCardHTML(repo, "missing");
+        }
+        if (repo.folderExists && repo.isReadable === false) {
+            return this.createProblemRepoCardHTML(repo, "unreadable");
+        }
+        if (repo.folderExists && repo.isValidGit === false) {
+            return this.createProblemRepoCardHTML(repo, "invalidGit");
         }
 
         // Determine status class based on repository state - using same logic as overview tab
@@ -2409,7 +2297,7 @@ class GitManager {
         `;
     }
 
-    createMissingFolderCardHTML(repo) {
+    createProblemRepoCardHTML(repo, problem) {
         // Determine badge text based on repository type
         const badgeText =
             repo.repoType === "plugin"
@@ -2418,13 +2306,23 @@ class GitManager {
                 ? "Theme"
                 : "Other";
 
+        let problemClass = "missing";
+        let problemTitle = "Repository folder is missing";
+        if (problem === "invalidGit") {
+            problemClass = "invalid";
+            problemTitle = "Not a valid Git repository at this path";
+        } else if (problem === "unreadable") {
+            problemClass = "unreadable";
+            problemTitle = "Repository path is not readable by the server";
+        }
+
         return `
-            <div class="git-repo-card git-repo-card-missing" data-repo-id="${
-                repo.id
-            }">
+            <div class="git-repo-card git-repo-card-${problemClass}" data-repo-id="${this.escapeHtml(
+            String(repo.id)
+        )}">
                 <div class="repo-card-header">
                     <h4 class="repo-name">${this.escapeHtml(repo.name)}</h4>
-                    <div class="repo-status missing">
+                    <div class="repo-status ${problemClass}">
                         <span class="status-dot"></span>
                     </div>
                 </div>
@@ -2437,7 +2335,7 @@ class GitManager {
                             <line x1="12" y1="9" x2="12" y2="13"/>
                             <line x1="12" y1="17" x2="12.01" y2="17"/>
                         </svg>
-                        Repository folder is missing
+                        ${this.escapeHtml(problemTitle)}
                     </div>
                     <span class="repo-hashtag ${
                         repo.repoType || "other"
@@ -2445,6 +2343,12 @@ class GitManager {
                 </div>
 
                 <div class="repo-card-actions">
+                    <button class="repo-action-btn repo-troubleshoot-btn" data-action="troubleshoot" title="Troubleshoot this repository" onclick="window.safeGitManagerCall('troubleshootRepoFor', '${
+                        repo.id
+                    }')">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
+                        Troubleshoot
+                    </button>
                     <button class="repo-action-btn repo-reclone-btn" data-action="reclone" title="Re-clone repository to same path" onclick="window.safeGitManagerCall('reCloneRepository', '${
                         repo.id
                     }')">
@@ -2464,9 +2368,9 @@ class GitManager {
                         </svg>
                         Manage Path
                     </button>
-                                            <button class="repo-action-btn repo-delete-btn" data-action="delete" title="Delete repository" onclick="window.safeGitManagerCall('deleteRepository', '${
-                                                repo.id
-                                            }')">
+                    <button class="repo-action-btn repo-delete-btn" data-action="delete" title="Delete repository" onclick="window.safeGitManagerCall('deleteRepository', '${
+                        repo.id
+                    }')">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
                             <path d="M3 6h18"/>
                             <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
@@ -2476,6 +2380,11 @@ class GitManager {
                 </div>
             </div>
         `;
+    }
+
+    // Backward-compatible wrapper
+    createMissingFolderCardHTML(repo) {
+        return this.createProblemRepoCardHTML(repo, "missing");
     }
 
     getCardStatusText(status) {
@@ -2510,16 +2419,20 @@ class GitManager {
             selectedCard.classList.add("active");
         }
 
-        // Check if this is a missing folder repository
-        if (
+        // If problematic, open troubleshooting for this repo
+        const isProblem =
             selectedCard &&
-            selectedCard.classList.contains("git-repo-card-missing")
-        ) {
-            this.showMissingFolderMessage(repoId);
-            return;
-        }
+            (selectedCard.classList.contains("git-repo-card-missing") ||
+                selectedCard.classList.contains("git-repo-card-invalid") ||
+                selectedCard.classList.contains("git-repo-card-unreadable"));
 
         this.currentRepo = repoId;
+
+        if (isProblem) {
+            // Directly launch troubleshooting with proper styling
+            this.troubleshootRepo();
+            return;
+        }
 
         // Add a small delay to ensure DOM is ready
         setTimeout(() => {
@@ -2674,21 +2587,25 @@ class GitManager {
     }
 
     startLiveUpdates() {
-        // Refresh repository list every 20s
+        // Refresh repository list every ~8 hours (skip when tab not visible)
         if (!this._repoListPoller) {
             this._repoListPoller = setInterval(() => {
+                if (document.hidden) return;
                 // Use silent refresh to avoid flicker when no changes
                 this.refreshRepositoriesSilently();
-            }, 20000);
+            }, 28800000);
         }
 
-        // Refresh active repository details every 10s
+        // Refresh active repository details every ~8 hours (skip when tab not visible)
         if (!this._repoDetailsPoller) {
             this._repoDetailsPoller = setInterval(() => {
-                if (this.currentRepo) {
+                if (document.hidden) return;
+                // Only refresh details if repo is selected and overview tab is active
+                const isOverviewActive = this.activeTab === "overview";
+                if (this.currentRepo && isOverviewActive) {
                     this.loadRepositoryDetails(this.currentRepo);
                 }
-            }, 10000);
+            }, 28800000);
         }
 
         // Update live badge
@@ -2707,6 +2624,22 @@ class GitManager {
                     this.loadRepositoryDetails(this.currentRepo);
                 }
             }
+        });
+
+        // When tab becomes visible again, trigger a refresh
+        document.addEventListener("visibilitychange", () => {
+            if (!document.hidden) {
+                this.refreshRepositoriesSilently();
+                if (this.currentRepo && this.activeTab === "overview") {
+                    this.loadRepositoryDetails(this.currentRepo);
+                }
+            }
+        });
+
+        // Cleanup on unload
+        window.addEventListener("beforeunload", () => {
+            if (this._repoListPoller) clearInterval(this._repoListPoller);
+            if (this._repoDetailsPoller) clearInterval(this._repoDetailsPoller);
         });
     }
 
@@ -3945,6 +3878,13 @@ class GitManager {
                                       branchName
                                   )}">Checkout</button>`
                         }
+                        ${
+                            !isCurrent
+                                ? `<button class="git-action-btn delete-branch-btn" data-branch="${this.escapeHtml(
+                                      branchName
+                                  )}"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="action-icon-svg"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>`
+                                : ""
+                        }
                     </div>
                 </div>
             `;
@@ -3952,20 +3892,23 @@ class GitManager {
                 .join("");
             branchesList.innerHTML = branchesHTML;
 
-            // Add event listeners after rendering
             branchesList.querySelectorAll(".checkout-btn").forEach((button) => {
                 button.addEventListener("click", (e) => {
                     const branchName = e.target.dataset.branch;
                     this.checkoutBranch(this.currentRepo, branchName);
                 });
             });
+
+            branchesList
+                .querySelectorAll(".delete-branch-btn")
+                .forEach((button) => {
+                    button.addEventListener("click", (e) => {
+                        const branchName =
+                            e.target.closest("[data-branch]").dataset.branch;
+                        this.deleteBranch(this.currentRepo, branchName);
+                    });
+                });
         };
-
-        render();
-
-        searchInput.addEventListener("input", (e) => {
-            render(e.target.value);
-        });
     }
 
     /**
@@ -3974,49 +3917,71 @@ class GitManager {
     async checkoutBranch(repoId, branchName) {
         this.showProgress(`Checking out ${branchName}...`);
         try {
-            const formData = new FormData();
-            formData.append("action", gitManagerAjax.actions.checkout_branch);
-            formData.append("nonce", gitManagerAjax.nonce);
-            formData.append("id", repoId);
-            formData.append("branch", branchName);
-
-            const response = await fetch(gitManagerAjax.ajaxurl, {
-                method: "POST",
-                body: formData,
+            const result = await this.apiCall("git_manager_repo_checkout", {
+                id: repoId,
+                branch: branchName,
             });
-
-            const result = await response.json();
 
             if (result.success) {
                 this.showNotification(
                     `Successfully checked out to ${branchName}`,
                     "success"
                 );
-                // Refresh repositories and then restore selection
-                await this.loadRepositories();
-                // Re-select the current repository after refresh
-                this.selectRepository(repoId);
-                this.switchTab("overview");
+                this.refreshRepoDetails(repoId); // Refresh details to show new branch
             } else {
                 throw new Error(
                     result.data || `Failed to checkout ${branchName}`
                 );
             }
         } catch (error) {
-            this.showNotification(error.message, "error");
+            this.showNotification(
+                `Error checking out branch: ${error.message}`,
+                "error"
+            );
         } finally {
             this.hideProgress();
         }
     }
 
-    /**
-     * Action Handlers
-     */
-    handleAction(action, element) {
-        const repoId =
-            element.closest(".git-repo-card")?.dataset.repoId ||
-            this.currentRepo;
+    async deleteBranch(repoId, branchName) {
+        if (
+            !confirm(
+                `Are you sure you want to delete the branch "${branchName}"? This action cannot be undone.`
+            )
+        ) {
+            return;
+        }
 
+        this.showProgress(`Deleting branch ${branchName}...`);
+        try {
+            const result = await this.apiCall(
+                "git_manager_repo_delete_branch",
+                {
+                    id: repoId,
+                    branch: branchName,
+                }
+            );
+
+            if (result.success) {
+                this.showNotification(
+                    `Branch "${branchName}" deleted successfully`,
+                    "success"
+                );
+                this.loadBranches(repoId); // Refresh the branch list
+            } else {
+                throw new Error(result.data || "Failed to delete branch");
+            }
+        } catch (error) {
+            this.showNotification(
+                `Error deleting branch: ${error.message}`,
+                "error"
+            );
+        } finally {
+            this.hideProgress();
+        }
+    }
+
+    handleRepoAction(action, repoId) {
         switch (action) {
             case "pull":
                 this.pullRepository(repoId);
@@ -4228,48 +4193,46 @@ class GitManager {
         if (!repoId) return;
 
         if (
-            confirm(
+            !confirm(
                 "Are you sure you want to delete this repository? This action cannot be undone."
             )
         ) {
-            this.showNotification(
-                WPGitManagerGlobal.translations.deletingRepository,
-                "info"
-            );
-            try {
-                const formData = new FormData();
-                formData.append("action", gitManagerAjax.actions.repo_delete);
-                formData.append("id", repoId);
-                formData.append("nonce", gitManagerAjax.nonce);
+            return;
+        }
 
-                const response = await fetch(gitManagerAjax.ajaxurl, {
-                    method: "POST",
-                    body: formData,
-                });
+        this.showNotification(
+            WPGitManagerGlobal.translations.deletingRepository,
+            "info"
+        );
+        try {
+            const result = await this.apiCall("git_manager_repo_delete", {
+                id: repoId,
+                delete_files: false, // Always false, never delete files from disk.
+            });
 
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const result = await response.json();
-
-                if (result.success) {
-                    this.showNotification(
-                        "Repository deleted successfully",
-                        "success"
-                    );
-                    this.loadRepositories();
-                } else {
-                    throw new Error(
-                        result.data || "Failed to delete repository"
-                    );
-                }
-            } catch (error) {
+            if (result.success) {
                 this.showNotification(
-                    "Failed to delete repository: " + error.message,
+                    "Repository deleted successfully",
+                    "success"
+                );
+                this.refreshRepositoryList();
+                const repoDetail = document.getElementById("repo-detail");
+                if (repoDetail) {
+                    repoDetail.innerHTML =
+                        this.getWelcomeScreenHTML() ||
+                        "<p>Repository deleted. Select another repository.</p>";
+                }
+            } else {
+                this.showNotification(
+                    result.data || "Failed to delete repository",
                     "error"
                 );
             }
+        } catch (error) {
+            this.showNotification(
+                "Failed to delete repository: " + error.message,
+                "error"
+            );
         }
     }
 
@@ -4426,7 +4389,36 @@ class GitManager {
         return notification;
     }
 
+    setButtonLoadingState(button, isLoading) {
+        if (!button) return;
+
+        if (isLoading) {
+            button.disabled = true;
+            const originalContent = button.innerHTML;
+            button.setAttribute("data-original-content", originalContent);
+            button.innerHTML = `
+                <span class="button-loading-spinner"></span>
+            `;
+            button.style.width = button.offsetWidth + "px";
+            button.style.height = button.offsetHeight + "px";
+        } else {
+            button.disabled = false;
+            const originalContent = button.getAttribute(
+                "data-original-content"
+            );
+            if (originalContent) {
+                button.innerHTML = originalContent;
+                button.removeAttribute("data-original-content");
+            }
+            button.style.width = "";
+            button.style.height = "";
+        }
+    }
+
     escapeHtml(text) {
+        if (typeof text !== "string") {
+            return "";
+        }
         const div = document.createElement("div");
         div.textContent = text;
         return div.innerHTML;
@@ -5878,9 +5870,12 @@ class GitManager {
      */
     async loadRepositorySettings() {
         try {
-            const response = await this.apiCall("git_manager_repo_details", {
-                id: this.currentRepo,
-            });
+            const response = await this.apiCall(
+                "git_manager_get_repo_details",
+                {
+                    id: this.currentRepo,
+                }
+            );
 
             if (response.success) {
                 const repo = response.data;
@@ -5928,6 +5923,11 @@ class GitManager {
      * Setup event listeners for settings form
      */
     setupSettingsFormListeners() {
+        // Debounced version of the function to mark settings as modified
+        const debouncedMarkModified = this.debounce(() => {
+            this.markSettingsAsModified();
+        }, 500);
+
         // Save settings button
         const saveButton = document.getElementById("save-settings-btn");
         if (saveButton) {
@@ -5943,10 +5943,11 @@ class GitManager {
         );
         inputs.forEach((input) => {
             input.addEventListener("input", () => {
-                // Add visual indicator that changes are pending
-                this.markSettingsAsModified();
+                // Use the debounced function
+                debouncedMarkModified();
 
-                // Special handling for path input
+                // Special handling for path input can remain immediate if needed,
+                // or can also be debounced. For now, we'll keep it as is.
                 if (input.id === "repo-path-setting") {
                     this.validatePathInput(input);
                 }
@@ -6405,11 +6406,18 @@ class GitManager {
      * Manage repository path (unified solution for both re-cloning and fixing path)
      */
     async manageRepositoryPath(repoId) {
+        const button = document.querySelector(
+            `[data-repo-id="${repoId}"] .repo-action-btn[data-action="manage-path"]`
+        );
+        this.setButtonLoadingState(button, true);
         try {
             // Get repository details first
-            const response = await this.apiCall("git_manager_repo_details", {
-                id: repoId,
-            });
+            const response = await this.apiCall(
+                "git_manager_get_repo_details",
+                {
+                    id: repoId,
+                }
+            );
 
             if (!response.success) {
                 this.showNotification(
@@ -6432,6 +6440,8 @@ class GitManager {
                 "Error getting repository details: " + error.message,
                 "error"
             );
+        } finally {
+            this.setButtonLoadingState(button, false);
         }
     }
 
@@ -6672,121 +6682,81 @@ class GitManager {
      * Handle manage path form submission
      */
     async handleManagePathSubmit(repo) {
-        const newPath = document.getElementById("repo-path-input").value.trim();
-
-        // Get action type from switches
-        const recloneSwitch = document.getElementById("reclone-repo");
-        const actionType =
-            recloneSwitch && recloneSwitch.checked ? "reclone" : "update_path";
-
-        // Safely get branch value with proper null checks
-        const branchElement = document.getElementById("repo-branch");
-        const branch =
-            branchElement && branchElement.value
-                ? branchElement.value.trim()
-                : "main";
-
-        // Safely get delete old checkbox value
-        const deleteOldElement = document.getElementById("delete-old-entry");
-        const deleteOld = deleteOldElement ? deleteOldElement.checked : false;
-
-        if (!newPath) {
-            this.showNotification(
-                WPGitManagerGlobal.translations.repositoryPathRequired,
-                "error"
-            );
-            return;
-        }
-
-        if (!actionType) {
-            this.showNotification(
-                WPGitManagerGlobal.translations.pleaseSelectActionType,
-                "error"
-            );
-            return;
-        }
-
-        this.showProgress(
-            actionType === "reclone"
-                ? "Re-cloning repository..."
-                : "Updating repository path..."
-        );
+        const modal = document.querySelector(".git-manage-path-modal");
+        const saveButton = modal
+            ? modal.querySelector('button[type="submit"]')
+            : null;
+        this.setButtonLoadingState(saveButton, true);
 
         try {
+            const newPath = document
+                .getElementById("repo-path-input")
+                .value.trim();
+            const recloneSwitch = document.getElementById("reclone-repo");
+            const actionType =
+                recloneSwitch && recloneSwitch.checked
+                    ? "reclone"
+                    : "update_path";
+            const branchElement = document.getElementById("repo-branch");
+            const branch =
+                branchElement && branchElement.value
+                    ? branchElement.value.trim()
+                    : "main";
+            const deleteOldElement =
+                document.getElementById("delete-old-entry");
+            const deleteOld = deleteOldElement
+                ? deleteOldElement.checked
+                : false;
+
+            if (!newPath) {
+                this.showNotification(
+                    WPGitManagerGlobal.translations.repositoryPathRequired,
+                    "error"
+                );
+                // I must return here otherwise the finally block will execute and remove the loading indicator before the user can see the error.
+                this.setButtonLoadingState(saveButton, false);
+                return;
+            }
+
             if (actionType === "update_path") {
-                // Update path only
                 const response = await this.apiCall("git_manager_repo_update", {
                     id: repo.id,
                     name: repo.name,
                     path: newPath,
                     remoteUrl: repo.remoteUrl,
                     authType: repo.authType,
-                    meta: repo.meta,
                 });
-
                 if (response.success) {
                     this.showNotification(
                         `Repository path updated successfully to: ${newPath}`,
                         "success"
                     );
-
-                    // Close modal and refresh list
                     this.closeModal("manage-path");
-                    this.refreshRepositoryList();
-
-                    // Select the updated repository
-                    setTimeout(() => {
-                        this.selectRepository(repo.id);
-                    }, 1000);
+                    this.refreshRepositoriesSilently();
+                    await this.verifyRepositoryExists(repo.id);
                 } else {
-                    this.showNotification(
-                        "Failed to update repository path: " +
-                            (response.data ||
-                                WPGitManagerGlobal.translations.unknownError),
-                        "error"
-                    );
+                    throw new Error(response.data || "Failed to update path");
                 }
-            } else if (actionType === "reclone") {
-                // Re-clone repository
-                const addResponse = await this.apiCall("git_manager_repo_add", {
-                    name: repo.name,
-                    repo_path: newPath,
-                    repo_url: repo.remoteUrl,
-                    repo_branch: branch,
-                    authType: repo.authType,
-                    existing_repo: false,
-                });
-
-                if (addResponse.success) {
-                    const newRepoId = addResponse.data.id;
-
-                    // If delete old is checked, delete the old repository
-                    if (deleteOld) {
-                        await this.apiCall("git_manager_repo_delete", {
-                            id: repo.id,
-                            delete_files: false,
-                        });
+            } else {
+                const response = await this.apiCall(
+                    "git_manager_reclone_repo",
+                    {
+                        id: repo.id,
+                        new_path: newPath,
+                        branch: branch,
+                        delete_old: deleteOld,
                     }
-
+                );
+                if (response.success) {
                     this.showNotification(
-                        `Repository "${repo.name}" successfully re-cloned to new path: ${newPath}`,
+                        "Repository re-cloned successfully.",
                         "success"
                     );
-
-                    // Close modal and refresh list
                     this.closeModal("manage-path");
-                    this.refreshRepositoryList();
-
-                    // Select the new repository
-                    setTimeout(() => {
-                        this.selectRepository(newRepoId);
-                    }, 1000);
+                    this.loadRepositories();
                 } else {
-                    this.showNotification(
-                        "Failed to re-clone repository: " +
-                            (addResponse.data ||
-                                WPGitManagerGlobal.translations.unknownError),
-                        "error"
+                    throw new Error(
+                        response.data || "Failed to re-clone repository"
                     );
                 }
             }
@@ -6795,58 +6765,95 @@ class GitManager {
                 "Error managing repository path: " + error.message,
                 "error"
             );
+        } finally {
+            this.setButtonLoadingState(saveButton, false);
         }
-
-        this.hideProgress();
     }
 
     /**
-     * Update repository card in the list
+     * Rename repository (from settings tab)
      */
-    updateRepoCard(repo) {
-        const card = document.querySelector(
-            `.git-repo-card[data-repo-id="${repo.id}"]`
-        );
-        if (!card) return;
+    async renameRepository(repoId, newName) {
+        if (!repoId) return;
 
-        const statusElement = card.querySelector(".repo-status");
-        if (!statusElement) return;
+        this.showProgress("Renaming repository...");
+        try {
+            const response = await this.apiCall("git_manager_repo_rename", {
+                id: repoId,
+                name: newName,
+            });
 
-        const ahead = parseInt(repo.ahead || 0, 10);
-        const behind = parseInt(repo.behind || 0, 10);
-        let statusClass = "clean";
+            if (response.success) {
+                this.showNotification(
+                    "Repository renamed successfully",
+                    "success"
+                );
+                this.loadRepositories();
+            } else {
+                this.showNotification(
+                    "Failed to rename repository: " + response.data,
+                    "error"
+                );
+            }
+        } catch (error) {
+            this.showNotification(
+                "Error renaming repository: " + error.message,
+                "error"
+            );
+        } finally {
+            this.hideProgress();
+        }
+    }
 
-        // Use same status logic as overview tab and createRepoCardHTML
-        if (repo.hasChanges) {
-            statusClass = "changes";
-        } else if (ahead > 0 && behind > 0) {
-            statusClass = "diverged";
-        } else if (ahead > 0) {
-            statusClass = "ahead";
-        } else if (behind > 0) {
-            statusClass = "behind";
+    validateAddRepositoryForm(form) {
+        const pathInput = form.querySelector('[name="repo_path"]');
+        const remoteInput = form.querySelector('[name="repo_url"]');
+        const isExistingCheckbox = form.querySelector('[name="existing_repo"]');
+
+        if (!isExistingCheckbox) {
+            console.error("Could not find the 'existing_repo' checkbox.");
+            return false;
+        }
+        const isExisting = isExistingCheckbox.checked;
+
+        if (!isExisting) {
+            if (!remoteInput || !remoteInput.value.trim()) {
+                this.showNotification("Repository URL is required.", "error");
+                remoteInput?.focus();
+                return false;
+            }
         }
 
-        statusElement.className = `repo-status ${statusClass}`;
-        statusElement.setAttribute("data-repo-status", statusClass);
-
-        // Keep only the status dot, remove any text that might have been added
-        const statusDot = statusElement.querySelector(".status-dot");
-        if (statusDot) {
-            statusElement.innerHTML = `<span class="status-dot"></span>`;
+        if (!pathInput || !pathInput.value.trim()) {
+            this.showNotification("Local path is required.", "error");
+            pathInput?.focus();
+            return false;
         }
 
-        // Update repository type badge if it exists
-        const badgeElement = card.querySelector(".repo-type-badge");
-        if (badgeElement && repo.repoType) {
-            const badgeText =
-                repo.repoType === "plugin"
-                    ? "#Plugin"
-                    : repo.repoType === "theme"
-                    ? "#Theme"
-                    : "#Other";
-            badgeElement.className = `repo-hashtag ${repo.repoType}`;
-            badgeElement.textContent = badgeText;
+        return true;
+    }
+
+    /**
+     * Show a notification that fields were auto-filled.
+     * @param {object} parsedData
+     */
+    showAutoFillNotification(parsedData) {
+        const messages = [];
+
+        if (parsedData.suggestedPath) {
+            messages.push(`Path: ${parsedData.suggestedPath}`);
+        }
+
+        if (parsedData.defaultBranch) {
+            messages.push(`Branch: ${parsedData.defaultBranch}`);
+        }
+
+        if (messages.length > 0) {
+            this.showNotification(
+                `Auto-filled: ${messages.join(", ")}`,
+                "info",
+                { duration: 3000 }
+            );
         }
     }
 }
@@ -6856,6 +6863,11 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
         if (typeof gitManagerAjax !== "undefined") {
             window.GitManager = new GitManager();
+
+            // Ensure skeleton helper is available globally for minified build
+            if (typeof window.gitManagerSkeleton === "undefined") {
+                window.gitManagerSkeleton = new GitManagerSkeleton();
+            }
 
             // Add safety wrapper for inline onclick handlers
             window.safeGitManagerCall = (method, ...args) => {
@@ -6924,6 +6936,15 @@ document.addEventListener("DOMContentLoaded", () => {
                     window.GitManager.selectRepository(repoId);
                 } else {
                 }
+            };
+
+            // Helper to open troubleshooting for a specific repo id
+            window.troubleshootRepoFor = (repoId) => {
+                if (!window.GitManager) return;
+                if (repoId) {
+                    window.GitManager.currentRepo = repoId;
+                }
+                window.GitManager.troubleshootRepo();
             };
         } else {
         }
@@ -7368,66 +7389,5 @@ class GitManagerSkeleton {
         element.className = `skeleton ${className}`;
         element.style.width = width;
         element.style.height = height;
-        return element;
-    }
-
-    /**
-     * Check if required elements exist before showing skeletons
-     */
-    checkRequiredElements() {
-        // Only require elements relevant to currently used skeletons; avoid hard failing on optional sections
-        const requiredElements = [
-            ".git-repo-list",
-            ".commits-list",
-            ".branches-list",
-            ".git-repo-details",
-            "#changes-list",
-        ];
-
-        const missingElements = [];
-        requiredElements.forEach((selector) => {
-            const element = document.querySelector(selector);
-            if (!element) {
-                missingElements.push(selector);
-            }
-        });
-
-        if (missingElements.length > 0) {
-            return false;
-        }
-
-        return true;
-    }
-
-    /**
-     * Safe method to show skeleton with element existence check
-     */
-    safeShowSkeleton(container, type, count = 1) {
-        if (!container) {
-            return false;
-        }
-
-        if (!this.checkRequiredElements()) {
-            return false;
-        }
-
-        this.showSkeleton(container, type, count);
-        return true;
     }
 }
-
-// Initialize skeleton utility
-const gitManagerSkeleton = new GitManagerSkeleton();
-
-// Note: Removed global error handler to allow WordPress to handle errors properly
-// Skeletons will be hidden through normal page lifecycle events
-
-// Hide skeletons when page is unloaded
-window.addEventListener("beforeunload", () => {
-    gitManagerSkeleton.hideAllSkeletons();
-});
-
-// Hide skeletons on DOM content loaded to ensure clean state
-document.addEventListener("DOMContentLoaded", () => {
-    gitManagerSkeleton.hideAllSkeletons();
-});

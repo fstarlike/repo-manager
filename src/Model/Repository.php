@@ -25,6 +25,17 @@ class Repository
 
     public ?string $activeBranch = null;
 
+    public array $debug_info = [];
+
+    // Derived flags to help frontend render accurate states
+    public ?bool $folderExists = null;
+
+    public ?bool $isReadable = null;
+
+    public ?bool $isValidGit = null;
+
+    public ?string $repoType = null;
+
     public function __construct(array $data)
     {
         $this->id        = $data['id'] ?? wp_generate_uuid4();
@@ -35,21 +46,51 @@ class Repository
         $this->meta      = is_array($data['meta'] ?? null) ? $data['meta'] : [];
     }
 
-    public function toArray(): array
+    public function getDisplayPath(): string
     {
-        $resolvedPath = realpath($this->path);
-        if (false === $resolvedPath) {
-            $resolvedPath = $this->path;
+        $path = wp_normalize_path($this->path);
+
+        $realAbspath   = rtrim(wp_normalize_path((string) realpath(ABSPATH)), '/');
+        $logicalAbspath = rtrim(wp_normalize_path(ABSPATH), '/');
+
+        $realWpContent = rtrim(wp_normalize_path((string) realpath(WP_CONTENT_DIR)), '/');
+        $logicalWpContent = rtrim(wp_normalize_path(WP_CONTENT_DIR), '/');
+
+        // Prefer mapping by ABSPATH if possible
+        if ($realAbspath && str_starts_with($path, $realAbspath)) {
+            return $logicalAbspath . substr($path, strlen($realAbspath));
         }
 
+        // Fallback: map by WP_CONTENT_DIR if ABSPATH didn’t match
+        if ($realWpContent && str_starts_with($path, $realWpContent)) {
+            return $logicalWpContent . substr($path, strlen($realWpContent));
+        }
+
+        // As a last resort, try DOCUMENT_ROOT mapping if it looks equivalent
+        $docRoot = isset($_SERVER['DOCUMENT_ROOT']) ? rtrim(wp_normalize_path($_SERVER['DOCUMENT_ROOT']), '/') : '';
+        if ($docRoot && $realAbspath && basename($docRoot) === basename($realAbspath) && str_starts_with($path, $realAbspath)) {
+            return $docRoot . substr($path, strlen($realAbspath));
+        }
+
+        return $path;
+    }
+
+    public function toArray(): array
+    {
         return [
             'id'           => $this->id,
             'name'         => $this->name,
-            'path'         => $resolvedPath,
+            'path'         => $this->getDisplayPath(),
+            'storedPath'   => wp_normalize_path($this->path),
             'remoteUrl'    => $this->remoteUrl,
             'authType'     => $this->authType,
             'meta'         => $this->meta,
             'activeBranch' => $this->activeBranch,
+            'debug_info'   => $this->debug_info,
+            'folderExists' => $this->folderExists,
+            'isReadable'   => $this->isReadable,
+            'isValidGit'   => $this->isValidGit,
+            'repoType'     => $this->repoType,
         ];
     }
 }

@@ -1,0 +1,627 @@
+/* ========================================
+   Repo Manager - Status Page Styles
+   ======================================== */
+
+@use "sass:map";
+@use "variables" as *;
+@use "mixins" as *;
+
+// Status Page Layout
+.repo-manager-status-dashboard {
+    .git-repo-content {
+        // inherit container spacing from admin where possible
+        max-width: map.get($container-max-widths, xl);
+        margin: 0 auto;
+        padding: spacing(6) spacing(6);
+    }
+}
+
+// Status Page Header
+.repo-details-header {
+    @include flex-between;
+    margin-bottom: spacing(8);
+    padding-bottom: spacing(4);
+    border-bottom: 1px solid color(border-primary);
+
+    h2 {
+        @include heading("3xl", bold);
+        color: color(text-primary);
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: spacing(3);
+
+        &::before {
+            content: "";
+            width: 3px;
+            height: 28px;
+            background: color(primary);
+            border-radius: border-radius(full);
+        }
+    }
+
+    .repo-details-actions {
+        @include flex-start;
+        gap: spacing(3);
+        flex-wrap: wrap;
+
+        @include respond-below(md) {
+            width: 100%;
+            justify-content: flex-start;
+            margin-top: spacing(4);
+        }
+    }
+}
+
+// Overview Grid Layout
+.repo-overview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: spacing(6);
+    margin-bottom: spacing(8);
+
+    @include respond-below(md) {
+        grid-template-columns: 1fr;
+        gap: spacing(4);
+    }
+}
+
+// Overview Cards
+.overview-card {
+    border: 1px solid var(--gm-border);
+    border-radius: var(--gm-radius-xl, 18px);
+    padding: var(--gm-space-5);
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.06),
+        0 2px 4px -2px rgba(0, 0, 0, 0.04);
+    transition: transform 0.25s var(--gm-ease, ease),
+        box-shadow 0.25s var(--gm-ease, ease),
+        border-color 0.25s var(--gm-ease, ease);
+    backdrop-filter: blur(4px);
+
+    &:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px -6px rgba(0, 0, 0, 0.12),
+            0 4px 10px -6px rgba(0, 0, 0, 0.08);
+    }
+
+    .overview-card-header {
+        @include flex-between;
+        margin-bottom: spacing(4);
+        padding-bottom: spacing(3);
+        border-bottom: 1px solid color(border-primary);
+
+        .overview-card-title-wrap {
+            @include flex-start;
+            gap: spacing(3);
+
+            .overview-card-icon {
+                width: 24px;
+                height: 24px;
+                color: color(primary);
+                flex-shrink: 0;
+            }
+
+            .overview-card-title {
+                margin: 0;
+                font-size: var(--gm-text-lg);
+                font-weight: 600;
+                background: linear-gradient(
+                    135deg,
+                    var(--gm-text) 0%,
+                    var(--gm-primary) 100%
+                );
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
+            }
+        }
+
+        .count-badge {
+            @include flex-center;
+            min-width: 40px;
+            height: 28px;
+            padding: spacing(1) spacing(2);
+            background: color(primary);
+            color: color(white);
+            border-radius: border-radius(full);
+            font-size: font-size(xs);
+            font-weight: font-weight(bold);
+            box-shadow: shadow(sm);
+        }
+    }
+
+    .overview-card-body {
+        .value {
+            font-size: font-size(base);
+            color: color(text-secondary);
+            margin: 0;
+            line-height: line-height(relaxed);
+        }
+    }
+}
+
+// Overall Health Card Special Styling
+.overview-card:first-child {
+    .count-badge {
+        background: color(success);
+        font-size: font-size(base);
+        min-width: 56px;
+        height: 34px;
+    }
+}
+
+// Status Items Container
+.status-items {
+    display: flex;
+    flex-direction: column;
+    gap: spacing(3);
+}
+
+// Individual Status Items
+.status-item {
+    @include card;
+    padding: spacing(4);
+    transition: transition(colors);
+    position: relative;
+    overflow: hidden;
+
+    &::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 3px;
+        background: color(border-primary);
+    }
+
+    &.status-pass::before {
+        background: color(success);
+    }
+
+    &.status-warn::before {
+        background: color(warning);
+    }
+
+    &.status-fail::before {
+        background: color(error);
+    }
+
+    &.status-neutral::before {
+        background: color(text-tertiary);
+    }
+
+    &:hover {
+        background: color(bg-secondary);
+    }
+
+    .status-item-header {
+        @include flex-start;
+        gap: spacing(3);
+        margin-bottom: spacing(2);
+
+        .status-indicator {
+            @include flex-center;
+            width: 24px;
+            height: 24px;
+            border-radius: border-radius(full);
+            flex-shrink: 0;
+            box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.02);
+
+            svg {
+                width: 16px;
+                height: 16px;
+            }
+        }
+
+        .status-content {
+            flex: 1;
+            min-width: 0;
+
+            .status-label {
+                font-size: font-size(sm);
+                font-weight: font-weight(semibold);
+                color: color(text-primary);
+                margin-bottom: spacing(1);
+                line-height: line-height(tight);
+            }
+
+            .status-value {
+                font-size: font-size(xs);
+                color: color(text-secondary);
+                font-family: $font-family-mono;
+                background: color(bg-secondary);
+                padding: spacing(1) spacing(2);
+                border-radius: border-radius(base);
+                border: 1px solid color(border-primary);
+                word-break: break-all;
+            }
+        }
+    }
+
+    .status-message {
+        margin-top: spacing(3);
+        padding-top: spacing(3);
+        border-top: 1px solid color(border-primary);
+
+        p {
+            margin: 0 0 spacing(2) 0;
+            font-size: font-size(sm);
+            color: color(text-secondary);
+            line-height: line-height(relaxed);
+        }
+
+        .status-action {
+            margin-top: spacing(2);
+        }
+    }
+}
+
+// Status Indicator Colors
+.status-pass .status-indicator {
+    background: color(success);
+    color: color(white);
+}
+
+.status-warn .status-indicator {
+    background: color(warning);
+    color: color(white);
+}
+
+.status-fail .status-indicator {
+    background: color(error);
+    color: color(white);
+}
+
+.status-neutral .status-indicator {
+    background: color(text-tertiary);
+    color: color(white);
+}
+
+// Guides Section
+.guides-grid {
+    display: grid;
+    gap: spacing(6);
+
+    @include respond-below(md) {
+        grid-template-columns: 1fr;
+        gap: spacing(4);
+    }
+}
+
+.guide-item {
+    @include card;
+    padding: spacing(6);
+    display: flex;
+    gap: spacing(4);
+    align-items: flex-start;
+
+    &:hover {
+        box-shadow: 0 8px 20px -6px rgba(0, 0, 0, 0.12),
+            0 4px 10px -6px rgba(0, 0, 0, 0.08);
+        transform: translateY(-1px);
+    }
+
+    .guide-icon {
+        @include flex-center;
+        width: 48px;
+        height: 48px;
+        border-radius: border-radius(lg);
+        background: color(bg-secondary);
+        color: color(primary);
+        flex-shrink: 0;
+        box-shadow: none;
+
+        svg {
+            width: 24px;
+            height: 24px;
+        }
+    }
+
+    .guide-content {
+        flex: 1;
+        min-width: 0;
+
+        h4 {
+            @include heading(base, semibold);
+            margin: 0 0 spacing(2) 0;
+            color: color(text-primary);
+        }
+
+        p {
+            font-size: font-size(sm);
+            color: color(text-secondary);
+            line-height: line-height(relaxed);
+            margin: 0 0 spacing(4) 0;
+        }
+
+        .git-action-btn {
+            margin-top: spacing(2);
+        }
+    }
+}
+
+// Code Block Styling
+.code-block {
+    background: color(bg-secondary);
+    border: 1px solid color(border-primary);
+    border-radius: border-radius(md);
+    padding: spacing(4);
+    margin-top: spacing(3);
+    position: relative;
+    overflow-x: auto;
+
+    &::before {
+        display: none;
+    }
+
+    code {
+        display: block;
+        font-family: $font-family-mono;
+        font-size: font-size(sm);
+        color: color(text-primary);
+        line-height: line-height(relaxed);
+        margin-bottom: spacing(2);
+        padding: spacing(2);
+        background: color(bg-primary);
+        border-radius: border-radius(base);
+        border: 1px solid color(border-primary);
+
+        &:last-child {
+            margin-bottom: 0;
+        }
+
+        &::before {
+            content: "$ ";
+            color: color(success);
+            font-weight: font-weight(bold);
+        }
+    }
+}
+
+// Action Buttons
+// Buttons are defined globally in admin.scss; only icon sizing here
+.git-action-btn {
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: spacing(2);
+
+    svg {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+    }
+}
+
+// Modal Styles (for SSH installation)
+.git-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: color(bg-overlay);
+    @include flex-center;
+    z-index: z-index(modal);
+    padding: spacing(4);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s var(--gm-ease, ease),
+        visibility 0.3s var(--gm-ease, ease);
+
+    &.is-visible {
+        opacity: 1;
+        visibility: visible;
+
+        .git-modal {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    }
+
+    .git-modal {
+        @include card;
+        max-width: 500px;
+        width: 100%;
+        max-height: 90vh;
+        overflow-y: auto;
+        position: relative;
+        transform: translateY(20px);
+        opacity: 0;
+        transition: transform 0.3s var(--gm-ease, ease),
+            opacity 0.3s var(--gm-ease, ease);
+
+        .git-modal-header {
+            @include flex-between;
+            padding: spacing(6) spacing(6) spacing(4);
+            border-bottom: 1px solid color(border-primary);
+
+            h3 {
+                @include heading(lg, semibold);
+                margin: 0;
+                color: color(text-primary);
+            }
+
+            .git-modal-close {
+                @include flex-center;
+                width: 32px;
+                height: 32px;
+                border: none;
+                background: transparent;
+                color: color(text-tertiary);
+                border-radius: border-radius(full);
+                cursor: pointer;
+                transition: transition(all);
+
+                &:hover {
+                    background: color(bg-secondary);
+                    color: color(text-primary);
+                }
+            }
+        }
+
+        .git-modal-body {
+            padding: spacing(6);
+
+            .form-group {
+                margin-bottom: spacing(5);
+
+                &:last-child {
+                    margin-bottom: 0;
+                }
+
+                label {
+                    display: block;
+                    font-size: font-size(sm);
+                    font-weight: font-weight(medium);
+                    color: color(text-primary);
+                    margin-bottom: spacing(2);
+                }
+
+                .form-control {
+                    @include input-base;
+                    width: 100%;
+                }
+
+                .form-help {
+                    font-size: font-size(xs);
+                    color: color(text-secondary);
+                    margin-top: spacing(1);
+                    line-height: line-height(relaxed);
+                }
+            }
+
+            .file-upload-wrapper {
+                display: flex;
+                align-items: center;
+                gap: spacing(3);
+
+                .file-upload-input {
+                    display: none;
+                }
+
+                .file-upload-name {
+                    font-size: font-size(sm);
+                    color: color(text-secondary);
+                    font-style: italic;
+                    @include text-truncate;
+                }
+            }
+        }
+
+        .git-modal-footer {
+            @include flex-between;
+            gap: spacing(3);
+            padding: spacing(4) spacing(6) spacing(6);
+            border-top: 1px solid color(border-primary);
+
+            .git-action-btn {
+                flex: 1;
+                justify-content: center;
+            }
+        }
+    }
+}
+
+// RTL Support
+[dir="rtl"] {
+    .repo-details-header h2::before {
+        margin-right: spacing(3);
+        margin-left: 0;
+    }
+
+    .status-item::before {
+        left: auto;
+        right: 0;
+    }
+
+    .code-block::before {
+        right: auto;
+        left: spacing(3);
+    }
+}
+
+// Responsive Improvements
+@include respond-below(sm) {
+    .repo-manager-status-dashboard .git-repo-content {
+        padding: spacing(4);
+    }
+
+    .repo-details-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: spacing(4);
+
+        .repo-details-actions {
+            width: 100%;
+            justify-content: flex-start;
+        }
+    }
+
+    .overview-card {
+        padding: spacing(4);
+    }
+
+    .guide-item {
+        flex-direction: column;
+        text-align: center;
+
+        .guide-icon {
+            align-self: center;
+        }
+    }
+
+    .git-modal-overlay {
+        padding: spacing(2);
+
+        .git-modal {
+            .git-modal-header,
+            .git-modal-body,
+            .git-modal-footer {
+                padding-left: spacing(4);
+                padding-right: spacing(4);
+            }
+        }
+    }
+}
+
+// Animation Enhancements
+@keyframes statusPulse {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+// Remove pulsing animations to match calm dashboard aesthetic
+
+// Focus States for Accessibility
+.git-action-btn:focus,
+.status-item:focus-within,
+.guide-item:focus-within {
+    outline: 2px solid color(border-focus);
+    outline-offset: 2px;
+}
+
+// Print Styles
+@media print {
+    .repo-details-actions,
+    .git-action-btn,
+    .git-modal-overlay {
+        display: none !important;
+    }
+
+    .overview-card,
+    .status-item,
+    .guide-item {
+        break-inside: avoid;
+        box-shadow: none;
+        border: 1px solid color(border-secondary);
+    }
+}
