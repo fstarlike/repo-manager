@@ -1969,11 +1969,12 @@ html[data-theme="dark"] {
         align-items: center;
         gap: var(--gm-space-2);
         min-height: 68px;
+        box-shadow: none !important;
 
         &:hover {
-            background: var(--gm-bg-tertiary);
-            border-color: var(--gm-border-dark);
+            background: transparent;
             color: var(--gm-text);
+            box-shadow: none;
         }
 
         &:focus {
@@ -2137,6 +2138,12 @@ html[data-theme="dark"] {
 
 .git-repo-details {
     padding: var(--gm-space-8);
+    padding-right: 0 !important;
+}
+
+[dir="rtl"] .git-repo-details {
+    padding-right: var(--gm-space-8) !important;
+    padding-left: 0 !important;
 }
 
 .repo-details-header {
@@ -9500,6 +9507,16 @@ span#repo-name {
         transition: transform var(--gm-transition);
     }
 
+    &.main-branch {
+        &:hover {
+            border-color: var(--gm-warning);
+        }
+
+        &::before {
+            background: var(--gm-warning);
+        }
+    }
+
     &:hover {
         border-color: var(--gm-primary);
         box-shadow: var(--gm-shadow-lg);
@@ -9530,8 +9547,6 @@ span#repo-name {
     }
 
     &.main-branch {
-        border-left: 4px solid var(--gm-warning);
-
         &.current {
             border-left-color: var(--gm-primary);
         }

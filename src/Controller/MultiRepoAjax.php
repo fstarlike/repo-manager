@@ -46,7 +46,6 @@ class MultiRepoAjax
         add_action('wp_ajax_git_manager_dir_create', [$this, 'createDirectory']);
         add_action('wp_ajax_git_manager_dir_delete', [$this, 'deleteDirectory']);
         add_action('wp_ajax_git_manager_dir_rename', [$this, 'renameDirectory']);
-        add_action('wp_ajax_git_manager_repo_checkout', [$this, 'checkout']);
         add_action('wp_ajax_git_manager_repo_push', [$this, 'push']);
         add_action('wp_ajax_git_manager_repo_merge', [$this, 'merge']);
         add_action('wp_ajax_git_manager_repo_tag', [$this, 'createTag']);

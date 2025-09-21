@@ -1051,62 +1051,6 @@ class GitManager
         }
     }
 
-    /**
-     * Checkout branch
-     */
-    public function checkout(): void
-    {
-        check_ajax_referer('git_manager_action', 'nonce');
-        $this->ensureCapabilities();
-
-        if (!RateLimiter::instance()->checkAjaxRateLimit('git_manager_repo_checkout')) {
-            wp_send_json_error('Rate limit exceeded');
-        }
-
-        try {
-            $repoId = $this->getRepositoryId();
-            $branch = sanitize_text_field(wp_unslash($_POST['branch'] ?? ''));
-            $create = !empty($_POST['create']);
-            $force  = !empty($_POST['force']);
-
-            if (empty($branch)) {
-                throw new \Exception('Branch name is required');
-            }
-
-            $repository = RepositoryManager::instance()->get($repoId);
-            if (!$repository instanceof Repository) {
-                throw new \Exception('Repository not found');
-            }
-
-            $args = [];
-            if ($create) {
-                $args[] = '-b';
-            }
-
-            if ($force) {
-                $args[] = '--force';
-            }
-
-            $args[] = $branch;
-
-            $result = SecureGitRunner::run($repository->path, 'checkout', $args);
-
-            AuditLogger::instance()->logGitCommand('checkout', $repository->path, $result['success'], $result['output'] ?? null);
-
-            if ($result['success']) {
-                wp_send_json_success($result);
-            } else {
-                wp_send_json_error($result['output'] ?? 'Checkout failed');
-            }
-        } catch (\Exception $exception) {
-            AuditLogger::instance()->log('error', 'git_checkout_failed', [
-                'error'   => $exception->getMessage(),
-                'repo_id' => $repoId ?? null,
-                'branch'  => $branch ?? null,
-            ]);
-            wp_send_json_error($exception->getMessage());
-        }
-    }
 
     /**
      * Fetch changes

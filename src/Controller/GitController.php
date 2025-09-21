@@ -46,7 +46,6 @@ class GitController
         add_action('wp_ajax_git_manager_repo_stash', [$this, 'stash']);
         add_action('wp_ajax_git_manager_repo_stash_pop', [$this, 'stashPop']);
         add_action('wp_ajax_git_manager_repo_checkout', [$this, 'checkout']);
-        add_action('wp_ajax_git_manager_checkout', [$this, 'checkout']);
         add_action('wp_ajax_git_manager_fetch', [$this, 'fetch']);
         add_action('wp_ajax_git_manager_pull', [$this, 'pull']);
         add_action('wp_ajax_git_manager_get_branches', [$this, 'getBranches']);
@@ -437,6 +436,7 @@ class GitController
             $branch = sanitize_text_field(wp_unslash($_POST['branch'] ?? ''));
             $create = !empty($_POST['create']);
             $force  = !empty($_POST['force']);
+            $remote = !empty($_POST['remote']);
 
             if (empty($branch)) {
                 throw new \Exception('Branch name is required');
@@ -448,22 +448,73 @@ class GitController
             }
 
             $resolvedPath = $this->repositoryManager->resolvePath($repository->path);
-            $args = [];
-            if ($create) {
-                $args[] = '-b';
+
+            // Check if repository is clean before attempting checkout (unless force is used)
+            if (!$force) {
+                $statusResult = $this->gitRunner->run($resolvedPath, 'status', ['--porcelain']);
+                if (!in_array(trim($statusResult['output'] ?? ''), ['', '0'], true)) {
+                    throw new \Exception('Cannot checkout: Repository has uncommitted changes. Please commit or stash your changes first.');
+                }
             }
 
-            if ($force) {
-                $args[] = '--force';
+            // Fetch first to ensure we have latest remote branches
+            $this->gitRunner->run($resolvedPath, 'fetch', ['--all'], ['low_priority' => true]);
+
+            // Handle remote branch checkout
+            if ($remote) {
+                // For remote branches, create a local tracking branch
+                $args = ['-b', $branch, 'origin/' . $branch];
+                $result = $this->gitRunner->run($resolvedPath, 'checkout', $args);
+
+                if (!$result['success']) {
+                    // If creating from remote fails, try creating a new local branch
+                    $args = ['-b', $branch];
+                    $result = $this->gitRunner->run($resolvedPath, 'checkout', $args);
+                }
+            } else {
+                // Check if local branch exists
+                $localCheck = $this->gitRunner->run($resolvedPath, 'show-ref', ['--heads', 'refs/heads/' . $branch]);
+
+                if (!empty($localCheck['output'])) {
+                    // Local branch exists, just checkout
+                    $args = [];
+                    if ($force) {
+                        $args[] = '--force';
+                    }
+                    $args[] = $branch;
+                    $result = $this->gitRunner->run($resolvedPath, 'checkout', $args);
+                } else {
+                    // Try to checkout remote branch
+                    $args = ['-b', $branch, 'origin/' . $branch];
+                    $result = $this->gitRunner->run($resolvedPath, 'checkout', $args);
+
+                    // If that fails, try creating a new branch
+                    if (!$result['success']) {
+                        $args = ['-b', $branch];
+                        $result = $this->gitRunner->run($resolvedPath, 'checkout', $args);
+                    }
+                }
             }
 
-            $args[] = $branch;
+            // Verify that checkout was successful by checking current branch
+            if ($result['success']) {
+                $currentBranchResult = $this->gitRunner->run($resolvedPath, 'rev-parse', ['--abbrev-ref', 'HEAD']);
+                $currentBranch = trim($currentBranchResult['output'] ?? '');
 
-            $result = $this->gitRunner->run($resolvedPath, 'checkout', $args);
+                if ($currentBranch !== $branch) {
+                    throw new \Exception('Checkout failed: Could not switch to branch ' . $branch . '. Current branch is: ' . $currentBranch);
+                }
+            }
 
             $this->auditLogger->logGitCommand('checkout', $resolvedPath, $result['success'], $result['output'] ?? null);
 
             if ($result['success']) {
+                // Invalidate caches so other pages (dashboard) see the new branch immediately
+                delete_transient('git_manager_cache_repo_list');
+                delete_transient('git_manager_cache_repo_status_' . $repoId);
+                delete_transient('git_manager_cache_repo_details_' . $repoId);
+                delete_transient('git_manager_cache_latest_commit_' . $repoId);
+
                 wp_send_json_success($result);
             } else {
                 wp_send_json_error($result['output'] ?? 'Checkout failed');
@@ -741,7 +792,10 @@ class GitController
             wp_send_json_error('Access denied');
         }
 
-        check_ajax_referer('git_manager_action', 'nonce');
+        // Check nonce with better error handling
+        if (!wp_verify_nonce($_POST['nonce'] ?? '', 'git_manager_action')) {
+            wp_send_json_error('Invalid nonce. Please refresh the page and try again.');
+        }
     }
 
     /**

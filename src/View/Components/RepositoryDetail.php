@@ -13,7 +13,7 @@ class RepositoryDetail
             <div class="repo-details-header">
                 <h2 id="repo-details-name"><?php echo esc_html__('Repository', 'repo-manager'); ?></h2>
                 <div class="repo-details-actions">
-                    <button class="git-action-btn" data-action="pull" title="<?php echo esc_attr__('Pull changes', 'repo-manager'); ?>">
+                    <button class="git-action-btn" data-action="pull" data-repo-id="" title="<?php echo esc_attr__('Pull changes', 'repo-manager'); ?>">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M12 17V3"/>
                             <path d="m6 11 6 6 6-6"/>
@@ -21,7 +21,7 @@ class RepositoryDetail
                         </svg>
                         <?php echo esc_html__('Pull', 'repo-manager'); ?>
                     </button>
-                    <button class="git-action-btn" data-action="push" title="<?php echo esc_attr__('Push changes', 'repo-manager'); ?>">
+                    <button class="git-action-btn" data-action="push" data-repo-id="" title="<?php echo esc_attr__('Push changes', 'repo-manager'); ?>">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" width="16" height="16" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="m18 9-6-6-6 6"/>
                             <path d="M12 3v14"/>
@@ -29,7 +29,7 @@ class RepositoryDetail
                         </svg>
                         <?php echo esc_html__('Push', 'repo-manager'); ?>
                     </button>
-                    <button class="git-action-btn git-secondary-btn" data-action="fetch" title="<?php echo esc_attr__('Fetch updates', 'repo-manager'); ?>">
+                    <button class="git-action-btn git-secondary-btn" data-action="fetch" data-repo-id="" title="<?php echo esc_attr__('Fetch updates', 'repo-manager'); ?>">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
                             <path d="M21 3v5h-5"/>
@@ -38,7 +38,7 @@ class RepositoryDetail
                         </svg>
                         <?php echo esc_html__('Fetch', 'repo-manager'); ?>
                     </button>
-                    <button class="git-action-btn git-secondary-btn" data-action="status" title="<?php echo esc_attr__('Check status', 'repo-manager'); ?>">
+                    <button class="git-action-btn git-secondary-btn" data-action="status" data-repo-id="" title="<?php echo esc_attr__('Check status', 'repo-manager'); ?>">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
                             <circle cx="12" cy="12" r="10"/>
                             <path d="M12 16v-4"/>
@@ -46,13 +46,13 @@ class RepositoryDetail
                         </svg>
                         <?php echo esc_html__('Status', 'repo-manager'); ?>
                     </button>
-                    <button class="git-action-btn git-secondary-btn" data-action="troubleshoot" title="<?php echo esc_attr__('Professional troubleshooting', 'repo-manager'); ?>">
+                    <button class="git-action-btn git-secondary-btn" data-action="troubleshoot" data-repo-id="" title="<?php echo esc_attr__('Professional troubleshooting', 'repo-manager'); ?>">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
                             <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
                         </svg>
                         <?php echo esc_html__('Troubleshoot', 'repo-manager'); ?>
                     </button>
-                    <button class="git-action-btn git-secondary-btn" data-action="fix-permission" title="<?php echo esc_attr__('Fix permissions', 'repo-manager'); ?>">
+                    <button class="git-action-btn git-secondary-btn" data-action="fix-permission" data-repo-id="" title="<?php echo esc_attr__('Fix permissions', 'repo-manager'); ?>">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
                             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
                         </svg>

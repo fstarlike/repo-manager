@@ -1,6 +1,7 @@
 <?php
 
 use WPGitManager\Admin\GitManager;
+use WPGitManager\Controller\GitController;
 use WPGitManager\Controller\MultiRepoAjax;
 use WPGitManager\Controller\RepositoryController;
 use WPGitManager\Infrastructure\Autoloader;
@@ -194,6 +195,12 @@ add_action('admin_menu', function () {
 
 add_action('init', function () {
     if (is_admin()) {
+        // Register GitController for Git operations
+        if (class_exists(GitController::class)) {
+            $gitController = new GitController();
+            $gitController->register();
+        }
+
         // Register MultiRepoAjax
         if (class_exists(MultiRepoAjax::class)) {
             $rateLimiter     = RateLimiter::instance();

@@ -2632,7 +2632,7 @@ class GitManager {
         }
     }
 
-    loadRepositoryDetails(repoId) {
+    async loadRepositoryDetails(repoId) {
         if (!repoId) {
             return;
         }
@@ -2654,45 +2654,45 @@ class GitManager {
         formData.append("nonce", gitManagerAjax.nonce);
         formData.append("id", repoId);
 
-        fetch(gitManagerAjax.ajaxurl, {
-            method: "POST",
-            body: formData,
-            signal: this.detailsAbortController.signal,
-        })
-            .then((response) => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                return response.json();
-            })
-            .then((result) => {
-                // Only process if this is the latest request
-                if (requestSeq !== this.detailsRequestSeq) return;
-                if (result.success) {
-                    this.populateRepositoryDetails(result.data);
-                } else {
-                    throw new Error(
-                        result.data || "Failed to load repository details"
-                    );
-                }
-            })
-            .catch((error) => {
-                // Ignore AbortError for outdated requests
-                if (error && error.name === "AbortError") return;
-                // Only report if this is the latest request
-                if (requestSeq !== this.detailsRequestSeq) return;
-
-                this.showNotification(
-                    "Failed to load repository details: " + error.message,
-                    "error"
-                );
-            })
-            .finally(() => {
-                // Only hide loading state if this is the latest request
-                if (requestSeq === this.detailsRequestSeq) {
-                    this.hideLoadingState();
-                }
+        try {
+            const response = await fetch(gitManagerAjax.ajaxurl, {
+                method: "POST",
+                body: formData,
+                signal: this.detailsAbortController.signal,
             });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const result = await response.json();
+
+            // Only process if this is the latest request
+            if (requestSeq !== this.detailsRequestSeq) return;
+
+            if (result.success) {
+                this.populateRepositoryDetails(result.data);
+            } else {
+                throw new Error(
+                    result.data || "Failed to load repository details"
+                );
+            }
+        } catch (error) {
+            // Ignore AbortError for outdated requests
+            if (error && error.name === "AbortError") return;
+            // Only report if this is the latest request
+            if (requestSeq !== this.detailsRequestSeq) return;
+
+            this.showNotification(
+                "Failed to load repository details: " + error.message,
+                "error"
+            );
+        } finally {
+            // Only hide loading state if this is the latest request
+            if (requestSeq === this.detailsRequestSeq) {
+                this.hideLoadingState();
+            }
+        }
     }
 
     startLiveUpdates() {
@@ -2815,6 +2815,14 @@ class GitManager {
         if (repoNameHeader) {
             repoNameHeader.textContent = repo.name || "Repository";
         }
+
+        // Update data-repo-id for all action buttons in repo-details-actions
+        const actionButtons = document.querySelectorAll(
+            ".repo-details-actions .git-action-btn"
+        );
+        actionButtons.forEach((button) => {
+            button.setAttribute("data-repo-id", repo.id);
+        });
 
         this.updateOverviewSection(repo);
 
@@ -4481,13 +4489,19 @@ class GitManager {
     /**
      * Refresh repository details after operations
      */
-    refreshRepoDetails(repoId) {
+    async refreshRepoDetails(repoId) {
         if (this.currentRepo === repoId) {
-            this.loadRepositoryDetails(repoId);
-            this.loadBranches(repoId);
+            // Load repository details first
+            await this.loadRepositoryDetails(repoId);
+            // Then load branches after a short delay to avoid rate limiting
+            setTimeout(() => {
+                this.loadBranches(repoId);
+            }, 500);
         }
         // Also refresh the repository list to show updated status
-        this.loadRepositories();
+        setTimeout(() => {
+            this.loadRepositories();
+        }, 1000);
     }
 
     handleRepoAction(action, repoId) {
@@ -4536,7 +4550,7 @@ class GitManager {
             formData.append("action", gitManagerAjax.actions.repo_git);
             formData.append("nonce", gitManagerAjax.nonce);
             formData.append("id", repoId);
-            formData.append("op", "pull");
+            formData.append("command", "pull");
 
             const response = await fetch(gitManagerAjax.ajaxurl, {
                 method: "POST",
@@ -4627,7 +4641,7 @@ class GitManager {
             formData.append("action", gitManagerAjax.actions.repo_git);
             formData.append("nonce", gitManagerAjax.nonce);
             formData.append("id", repoId);
-            formData.append("op", "fetch");
+            formData.append("command", "fetch");
 
             const response = await fetch(gitManagerAjax.ajaxurl, {
                 method: "POST",
@@ -6313,11 +6327,18 @@ class GitManager {
             body: formData,
         });
 
+        const responseData = await response.json();
+
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            // Try to get the actual error message from the response
+            const errorMessage =
+                responseData.data?.message ||
+                responseData.message ||
+                `HTTP error! status: ${response.status}`;
+            throw new Error(errorMessage);
         }
 
-        return await response.json();
+        return responseData;
     }
 
     /**
