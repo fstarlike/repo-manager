@@ -33,6 +33,7 @@ class SecureGitRunner
         'show'         => ['--name-only', '--stat', '--format'],
         'ls-remote'    => ['--heads', '--tags', '--refs'],
         'rev-parse'    => ['--abbrev-ref', '--short', '--verify'],
+        'show-ref'     => ['--heads', '--tags', '--verify'],
         'symbolic-ref' => ['--short', '--delete'],
         'describe'     => ['--tags', '--always', '--dirty'],
         'tag'          => ['-l', '-a', '-m', '--delete', '--list'],
@@ -58,10 +59,15 @@ class SecureGitRunner
      */
     private const RATE_LIMIT_OPTION = 'git_manager_rate_limits';
 
-    private const RATE_LIMIT_WINDOW = 60;
+    /**
+     * Default rate limit window (seconds)
+     */
+    private const DEFAULT_RATE_LIMIT_WINDOW = 60;
 
-    // 1 minute
-    private const RATE_LIMIT_MAX_REQUESTS = 10; // Max 10 requests per minute per user
+    /**
+     * Default max requests per window, applied when no per-command override exists
+     */
+    private const DEFAULT_RATE_LIMIT_MAX_REQUESTS = 120;
 
     /**
      * Validate and sanitize Git command arguments
@@ -138,28 +144,65 @@ class SecureGitRunner
     }
 
     /**
-     * Check rate limiting
+     * Determine per-command rate limit configuration.
      */
-    private static function checkRateLimit(int $userId): bool
+    private static function getRateLimitConfigForCommand(string $command): array
+    {
+        // Sanitize to base command token
+        $base = explode(' ', trim($command))[0];
+
+        // Read-only commands get very generous limits
+        $map = [
+            'status'     => ['max' => 200, 'window' => 60],
+            'branch'     => ['max' => 200, 'window' => 60],
+            'rev-parse'  => ['max' => 200, 'window' => 60],
+            'show'       => ['max' => 120, 'window' => 60],
+            'log'        => ['max' => 120, 'window' => 60],
+            'describe'   => ['max' => 120, 'window' => 60],
+            'ls-remote'  => ['max' => 120, 'window' => 60],
+            // Mutating/network commands
+            'fetch'      => ['max' => 60,  'window' => 60],
+            'pull'       => ['max' => 60,  'window' => 60],
+            'push'       => ['max' => 30,  'window' => 60],
+            'clone'      => ['max' => 3,   'window' => 300],
+            'merge'      => ['max' => 30,  'window' => 60],
+            'checkout'   => ['max' => 120, 'window' => 60],
+            'commit'     => ['max' => 60,  'window' => 60],
+            'stash'      => ['max' => 60,  'window' => 60],
+            'tag'        => ['max' => 60,  'window' => 60],
+            'remote'     => ['max' => 60,  'window' => 60],
+        ];
+
+        return $map[$base] ?? ['max' => self::DEFAULT_RATE_LIMIT_MAX_REQUESTS, 'window' => self::DEFAULT_RATE_LIMIT_WINDOW];
+    }
+
+    /**
+     * Check rate limiting (per-user, per-command)
+     */
+    private static function checkRateLimit(int $userId, string $command): bool
     {
         $limits      = get_option(self::RATE_LIMIT_OPTION, []);
         $currentTime = time();
-        $windowStart = $currentTime - self::RATE_LIMIT_WINDOW;
+        $config      = self::getRateLimitConfigForCommand($command);
+        $windowStart = $currentTime - (int) $config['window'];
+
+        // Use composite key so commands have independent budgets
+        $key = $userId . ':' . explode(' ', trim($command))[0];
 
         // Clean old entries
-        if (isset($limits[$userId])) {
-            $limits[$userId] = array_filter($limits[$userId], fn ($timestamp) => $timestamp > $windowStart);
+        if (isset($limits[$key])) {
+            $limits[$key] = array_filter($limits[$key], fn ($timestamp) => $timestamp > $windowStart);
         } else {
-            $limits[$userId] = [];
+            $limits[$key] = [];
         }
 
-        // Check if user has exceeded rate limit
-        if (count($limits[$userId]) >= self::RATE_LIMIT_MAX_REQUESTS) {
+        // Check if user has exceeded rate limit for this command
+        if (count($limits[$key]) >= (int) $config['max']) {
             return false;
         }
 
         // Add current request
-        $limits[$userId][] = $currentTime;
+        $limits[$key][] = $currentTime;
         update_option(self::RATE_LIMIT_OPTION, $limits, false);
 
         return true;
@@ -234,8 +277,8 @@ class SecureGitRunner
                 return ['success' => false, 'output' => 'Command execution is disabled', 'cmd' => $command];
             }
 
-            // Check rate limiting
-            if (!self::checkRateLimit(get_current_user_id())) {
+            // Check rate limiting (per-command, generous for read-only operations)
+            if (!self::checkRateLimit(get_current_user_id(), $command)) {
                 return ['success' => false, 'output' => 'Rate limit exceeded. Please wait before making another request.', 'cmd' => $command];
             }
 
@@ -818,18 +861,34 @@ class SecureGitRunner
      */
     public static function getRateLimitStatus(int $userId): array
     {
-        $limits      = get_option(self::RATE_LIMIT_OPTION, []);
-        $currentTime = time();
-        $windowStart = $currentTime - self::RATE_LIMIT_WINDOW;
+        $limits = get_option(self::RATE_LIMIT_OPTION, []);
+        $now    = time();
 
-        $userRequests   = $limits[$userId] ?? [];
-        $recentRequests = array_filter($userRequests, fn ($timestamp) => $timestamp > $windowStart);
-
-        return [
-            'current_requests'   => count($recentRequests),
-            'max_requests'       => self::RATE_LIMIT_MAX_REQUESTS,
-            'window_seconds'     => self::RATE_LIMIT_WINDOW,
-            'remaining_requests' => max(0, self::RATE_LIMIT_MAX_REQUESTS - count($recentRequests)),
+        // Aggregate per-command budgets for this user (best-effort overview)
+        $totals = [
+            'current_requests'   => 0,
+            'max_requests'       => 0,
+            'window_seconds'     => self::DEFAULT_RATE_LIMIT_WINDOW,
+            'remaining_requests' => 0,
         ];
+
+        foreach ($limits as $key => $timestamps) {
+            if (0 !== strpos((string) $key, $userId . ':')) {
+                continue;
+            }
+
+            $command       = substr((string) $key, strlen((string) $userId) + 1);
+            $config        = self::getRateLimitConfigForCommand($command);
+            $windowStart   = $now - (int) $config['window'];
+            $recent        = array_filter((array) $timestamps, fn ($t) => $t > $windowStart);
+            $current       = count($recent);
+
+            $totals['current_requests']   += $current;
+            $totals['max_requests']       += (int) $config['max'];
+        }
+
+        $totals['remaining_requests'] = max(0, (int) $totals['max_requests'] - (int) $totals['current_requests']);
+
+        return $totals;
     }
 }

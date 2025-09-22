@@ -222,10 +222,11 @@ class RateLimiter
         $actionLimits = [
             'git_manager_repo_clone'  => ['max' => 3, 'window' => 300], // 3 clones per 5 minutes
             'git_manager_repo_delete' => ['max' => 5, 'window' => 300], // 5 deletes per 5 minutes
-            'git_manager_pull'        => ['max' => 20, 'window' => 60], // 20 pulls per minute
-            'git_manager_push'        => ['max' => 10, 'window' => 60], // 10 pushes per minute
+            'git_manager_pull'        => ['max' => 200, 'window' => 60], // 20 pulls per minute
+            'git_manager_push'        => ['max' => 100, 'window' => 60], // 10 pushes per minute
             'git_manager_fetch'       => ['max' => 30, 'window' => 60], // 30 fetches per minute
-            'git_manager_get_branches' => ['max' => 50, 'window' => 60], // 50 branch requests per minute
+            // Make branches list effectively unrestricted for normal usage
+            'git_manager_get_branches' => ['max' => 500, 'window' => 60], // 500 branch requests per minute
             'git_manager_bulk_repo_status' => ['max' => 100, 'window' => 60], // 100 status requests per minute
         ];
 
