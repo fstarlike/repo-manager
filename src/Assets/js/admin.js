@@ -48,10 +48,46 @@ class GitManager {
             selectedPath: "",
         };
 
+        // Auto-refresh interval (in milliseconds)
+        this.autoRefreshInterval = 30000; // 30 seconds
+        this.autoRefreshTimer = null;
+
+        // Bind methods
+        this.init = this.init.bind(this);
+        this.setupEventListeners = this.setupEventListeners.bind(this);
+        this.setupKeyboardShortcuts = this.setupKeyboardShortcuts.bind(this);
+        this.setupMigrationTool = this.setupMigrationTool.bind(this);
+        this.initializeApp = this.initializeApp.bind(this);
+        this.setupTheme = this.setupTheme.bind(this);
+        this.ensureProperDisplayStates =
+            this.ensureProperDisplayStates.bind(this);
+        this.loadRepositories = this.loadRepositories.bind(this);
+        this.ensureButtonFunctionality =
+            this.ensureButtonFunctionality.bind(this);
+        this.setupAnimations = this.setupAnimations.bind(this);
+        this.getStoredTheme = this.getStoredTheme.bind(this);
+        this.toggleTheme = this.toggleTheme.bind(this);
+        this.updateThemeUI = this.updateThemeUI.bind(this);
+        this.showCloneModal = this.showCloneModal.bind(this);
+        this.showModal = this.showModal.bind(this);
+        this.closeModal = this.closeModal.bind(this);
+        this.closeAllModals = this.closeAllModals.bind(this);
+        this.positionModal = this.positionModal.bind(this);
+        this.setupUrlAutoFill = this.setupUrlAutoFill.bind(this);
+        this.handleUrlInput = this.handleUrlInput.bind(this);
+        this.parseGitUrl = this.parseGitUrl.bind(this);
+        this.handleGlobalClick = this.handleGlobalClick.bind(this);
+        this.handleGlobalKeydown = this.handleGlobalKeydown.bind(this);
+        this.handleFormSubmit = this.handleFormSubmit.bind(this);
+        this.handleModalBackdropClick =
+            this.handleModalBackdropClick.bind(this);
+        this.handleResize = this.handleResize.bind(this);
+        this.updateFileBrowserHeight = this.updateFileBrowserHeight.bind(this);
+        this.showToast = this.showToast.bind(this);
+        this.updateOverallStatus = this.updateOverallStatus.bind(this);
+        this.bulkUpdateStatus = this.bulkUpdateStatus.bind(this);
+
         this.init();
-        this.setupEventListeners();
-        this.setupKeyboardShortcuts();
-        this.setupMigrationTool();
     }
 
     t(key, fallback = "") {
@@ -228,6 +264,15 @@ class GitManager {
                     );
                 }
             }, 50);
+
+            this.updateDateTime();
+            setInterval(() => this.updateDateTime(), 60000);
+
+            this.bulkUpdateStatus();
+            this.autoRefreshTimer = setInterval(
+                () => this.bulkUpdateStatus(),
+                this.autoRefreshInterval
+            );
         } catch (error) {}
     }
 
@@ -760,7 +805,6 @@ class GitManager {
             return null;
         }
     }
-
     /**
      * Parse SSH URL format: git@github.com:user/repo.git
      */
@@ -1498,7 +1542,6 @@ class GitManager {
             httpsAuthFields.style.display = "block";
         }
     }
-
     /**
      * Create Clone Modal HTML
      */
@@ -2250,7 +2293,6 @@ class GitManager {
         // Ensure buttons are functional after rendering
         this.ensureButtonFunctionality();
     }
-
     updateRepoCard(card, repo) {
         if (!card) return;
         // Name
@@ -3044,7 +3086,6 @@ class GitManager {
 
         this.hideProgress();
     }
-
     /**
      * Show branches tab
      */
@@ -3838,7 +3879,6 @@ class GitManager {
             loadingFeedback.remove();
         }
     }
-
     /**
      * Show error message for commits
      */
@@ -4068,7 +4108,7 @@ class GitManager {
                             <div class="branch-info">
                                 <div class="branch-icon-wrapper">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="branch-icon">
-                                        <line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>
+                                        <line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"/>
                                     </svg>
                                 </div>
                                 <div class="branch-details">
@@ -4628,7 +4668,6 @@ class GitManager {
             );
         }
     }
-
     async fetchRepository(repoId) {
         if (!repoId) return;
 
@@ -5364,7 +5403,6 @@ class GitManager {
             </div>
         `;
     }
-
     updateNewBreadcrumb(path, modal) {
         if (!modal) return;
         const breadcrumb = modal.querySelector("#new-breadcrumb");
@@ -6156,7 +6194,6 @@ class GitManager {
             );
         }
     }
-
     /**
      * Show enhanced troubleshooting interface
      */
@@ -6951,7 +6988,6 @@ class GitManager {
             );
         }
     }
-
     /**
      * Manage repository path (unified solution for both re-cloning and fixing path)
      */
@@ -7506,7 +7542,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     } catch (error) {}
 });
-
 // Note: Removed global error handlers to allow WordPress to handle errors properly
 
 class GitManagerSkeleton {

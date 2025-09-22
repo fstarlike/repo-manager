@@ -312,6 +312,18 @@ class MultiRepoAjax
 
         // Check if repository directory exists with improved path resolution
         $resolvedPath = $this->repositoryManager->resolvePath($repo->path);
+
+        // Fetch latest changes from remote
+        $remoteResult = SecureGitRunner::runIndirectory($resolvedPath, 'remote');
+        if ($remoteResult['success'] && !empty(trim($remoteResult['output']))) {
+            SecureGitRunner::runInDirectory($resolvedPath, 'fetch');
+        }
+
+        // Validate repository path
+        if (!is_dir($resolvedPath) || !is_dir($resolvedPath . '/.git')) {
+            wp_send_json_error('Invalid repository path.');
+        }
+
         $directoryExists    = is_dir($resolvedPath);
         $gitDirectoryExists = is_dir($resolvedPath . '/.git');
 
@@ -3090,88 +3102,45 @@ class MultiRepoAjax
      */
     public function getBulkRepoStatus(): void
     {
-        $this->ensureAllowed();
+        check_ajax_referer('wp-git-manager-nonce', 'nonce');
 
-        if (!$this->rateLimiter->checkAjaxRateLimit('git_manager_bulk_repo_status')) {
-            wp_send_json_error('Rate limit exceeded');
-        }
-
-        // Optional hint from clients (e.g., floating widget) to prefer cached results
-        // phpcs:ignore WordPress.Security.NonceVerification.Missing
-        $useCacheParam = sanitize_text_field(wp_unslash($_POST['use_cache'] ?? ''));
-        $useCache      = ('1' === $useCacheParam || 'true' === strtolower($useCacheParam));
-
-        $repos = $this->repositoryManager->all();
-        if (empty($repos)) {
-            wp_send_json_error('No repositories found');
-        }
-
+        $repos = $this->repositoryManager->getRepositories();
         $results = [];
+
         foreach ($repos as $repo) {
-            if (!$repo || empty($repo->path)) {
-                continue;
-            }
-
-            // Per-repository cache to avoid expensive git calls on frequent polls
-            $bulkCacheKey = 'git_manager_cache_bulk_repo_status_' . $repo->id;
-            $cachedBulk   = get_transient($bulkCacheKey);
-            if (false !== $cachedBulk && $useCache) {
-                $results[$repo->id] = $cachedBulk;
-                continue;
-            }
-
-            // Check if repository directory exists using is_dir which respects symlinks
             $resolvedPath = $this->repositoryManager->resolvePath($repo->path);
-            if (!is_dir($resolvedPath)) {
+
+            if (!$resolvedPath || !is_dir($resolvedPath . '/.git')) {
                 $results[$repo->id] = [
-                    'status'        => null,
-                    'status_error'  => 'Repository directory does not exist: ' . $repo->path,
-                    'latest_commit' => null,
-                    'commit_error'  => 'Repository directory does not exist: ' . $repo->path,
+                    'status'        => 'Not a valid Git repository or path not found.',
+                    'status_error'  => true,
+                    'latest_commit' => '',
+                    'commit_error'  => false,
                     'behind'        => 0,
                     'ahead'         => 0,
                     'hasChanges'    => false,
-                    'currentBranch' => null,
+                    'currentBranch' => '',
                     'folderExists'  => false,
                 ];
                 continue;
             }
 
-            // Check if .git directory exists
-            if (! \WPGitManager\Service\SecureGitRunner::isGitRepositoryPath($resolvedPath)) {
-                $results[$repo->id] = [
-                    'status'        => null,
-                    'status_error'  => 'Not a valid Git repository: .git directory not found',
-                    'latest_commit' => null,
-                    'commit_error'  => 'Not a valid Git repository: .git directory not found',
-                    'behind'        => 0,
-                    'ahead'         => 0,
-                    'hasChanges'    => false,
-                    'currentBranch' => null,
-                    'folderExists'  => true,
-                ];
-                continue;
+            // Fetch latest changes from remote
+            $remoteResult = SecureGitRunner::runInDirectory($resolvedPath, 'remote');
+            if ($remoteResult['success'] && !empty(trim($remoteResult['output']))) {
+                SecureGitRunner::runInDirectory($resolvedPath, 'fetch');
             }
 
-            // Ensure we have the latest remote state (heavily throttled)
-            // $throttleKey = 'git_manager_last_fetch_' . $repo->id;
-            // if (false === get_transient($throttleKey)) {
-            //     // Perform background fetch far less frequently to reduce load
-            //     SecureGitRunner::runInDirectory($repo->path, 'fetch --all --prune', ['low_priority' => true]);
-            //     // Align with very infrequent UI polling; 8 hours
-            //     set_transient($throttleKey, time(), 8 * HOUR_IN_SECONDS);
-            // }
-
-            // Get branch information
+            // Get current branch name
             $branchResult  = SecureGitRunner::runInDirectory($resolvedPath, 'rev-parse --abbrev-ref HEAD');
             $currentBranch = trim($branchResult['output'] ?? '');
 
             if (!$branchResult['success'] || ('' === $currentBranch || '0' === $currentBranch)) {
                 $results[$repo->id] = [
                     'status'        => null,
-                    'status_error'  => 'Failed to determine current branch',
+                    'status_error'  => 'Failed to get current branch',
                     'latest_commit' => null,
-                    'commit_error'  => 'Failed to determine current branch',
+                    'commit_error'  => null,
                     'behind'        => 0,
                     'ahead'         => 0,
                     'hasChanges'    => false,
@@ -3244,9 +3213,6 @@ class MultiRepoAjax
                 'folderExists'  => true,
                 'rawOutput'     => $statusOutput,
             ];
-
-            // Cache computed result briefly to serve polling clients quickly
-            set_transient($bulkCacheKey, $results[$repo->id], 30);
         }
 
         wp_send_json_success($results);
