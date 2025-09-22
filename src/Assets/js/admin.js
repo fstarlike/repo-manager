@@ -3048,7 +3048,6 @@ class GitManager {
     forceReloadBranches(repoId) {
         this.loadBranches(repoId);
     }
-
     /**
      * Update repository display with new data
      */
@@ -3640,6 +3639,7 @@ class GitManager {
         try {
             // Check if gitManagerAjax is available
             if (typeof gitManagerAjax === "undefined") {
+                console.error("gitManagerAjax is not defined.");
                 return null;
             }
 
@@ -3659,11 +3659,18 @@ class GitManager {
                 if (result.success) {
                     return result.data;
                 } else {
+                    console.error(
+                        "Error fetching status:",
+                        result.data?.message || "Unknown error"
+                    );
                 }
             } else {
                 const errorText = await response.text();
+                console.error("Server error:", response.status, errorText);
             }
-        } catch (error) {}
+        } catch (error) {
+            console.error("Failed to load detailed status:", error);
+        }
         return null;
     }
 
@@ -3754,7 +3761,6 @@ class GitManager {
                 "<p class='value'>No uncommitted changes</p>";
         }
     }
-
     /**
      * Update recommendations
      */
@@ -4005,7 +4011,7 @@ class GitManager {
         const commitsList = document.querySelector(".commits-list");
         if (!commitsList) return;
 
-        if (!commits || commits.length === 0) {
+        if (!Array.isArray(commits) || commits.length === 0) {
             commitsList.innerHTML = "<p>No commits found for this branch.</p>";
             return;
         }
@@ -4072,7 +4078,6 @@ class GitManager {
 
             if (response.ok) {
                 const result = await response.json();
-                console.log("Branch loading response:", result);
                 if (result.success) {
                     gitManagerSkeleton.hideBranchesSkeleton();
                     this.populateBranches(result.data);
@@ -4104,8 +4109,6 @@ class GitManager {
             console.error("Branch search input element not found");
             return;
         }
-
-        console.log("Populating branches with data:", data);
 
         const {
             branches = [],
@@ -4530,7 +4533,6 @@ class GitManager {
             this.hideProgress();
         }
     }
-
     /**
      * Force checkout (discarding changes)
      */
@@ -5329,7 +5331,6 @@ class GitManager {
             this.setupNewDirectoryEvents(modal);
         }, 50);
     }
-
     async loadNewDirectories(path, modal) {
         if (!modal) {
             return;
@@ -6082,7 +6083,6 @@ class GitManager {
 
         this.searchNewDirectories(query, modal, searchStatus);
     }
-
     async searchNewDirectories(query, modal, searchStatus) {
         if (!modal) return;
 
@@ -6871,7 +6871,6 @@ class GitManager {
             }
         } catch (error) {}
     }
-
     /**
      * Verify that a repository still exists after update
      */
@@ -7638,7 +7637,7 @@ document.addEventListener("DOMContentLoaded", () => {
         } else {
         }
     } catch (error) {
-        console.log(error);
+        console.error(error);
     }
 });
 // Note: Removed global error handlers to allow WordPress to handle errors properly

@@ -1386,6 +1386,16 @@ html[data-theme="dark"] .repo-manager-header {
             transform: scaleX(1);
         }
     }
+
+    .repo-action-btn {
+        box-shadow: none !important;
+        gap: 0 !important;
+
+        &:hover {
+            background-color: transparent !important;
+            box-shadow: none !important;
+        }
+    }
 }
 
 .repo-card-header {
@@ -5206,6 +5216,7 @@ input#new-search-enhanced {
     border-radius: 12px;
     background: var(--gm-bg-secondary);
     border: 1px solid var(--gm-border-light);
+    margin-top: 10px;
 }
 
 .recommendation-icon {
@@ -5269,7 +5280,7 @@ html[data-theme="dark"] .recommendation-item {
 
 .recommendation-item {
     &.warning {
-        border-left-color: var(--gm-warning);
+        border-color: var(--gm-warning);
         background: linear-gradient(
             90deg,
             rgba(255, 246, 230, 0.6) 0%,
@@ -5278,7 +5289,7 @@ html[data-theme="dark"] .recommendation-item {
     }
 
     &.error {
-        border-left-color: var(--gm-error);
+        border-color: var(--gm-error);
         background: linear-gradient(
             90deg,
             rgba(254, 242, 242, 0.6) 0%,
@@ -5287,7 +5298,7 @@ html[data-theme="dark"] .recommendation-item {
     }
 
     &.success {
-        border-left-color: var(--gm-success);
+        border-color: var(--gm-success);
         background: linear-gradient(
             90deg,
             rgba(240, 253, 244, 0.6) 0%,
@@ -5460,7 +5471,7 @@ html[data-theme="dark"] {
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        max-width: 200px;
+        max-width: 250px;
 
         /* Adjust as needed */
         align-self: flex-start;

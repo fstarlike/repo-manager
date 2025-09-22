@@ -246,8 +246,8 @@ class MultiRepoAjax
             if ($statusResult['success']) {
                 $lines = explode("\n", trim($statusResult['output'] ?? ''));
                 foreach ($lines as $line) {
-                    if (0 === strpos($line, '##') && preg_match('/## ([^\.]+)/', $line, $matches)) {
-                        $repo->activeBranch = $matches[1];
+                    if (0 === strpos($line, '##') && preg_match('/^## (.*?)(?:\.{3}|$)/', $line, $matches)) {
+                        $repo->activeBranch = trim($matches[1]);
                         break;
                     }
                 }
@@ -434,13 +434,6 @@ class MultiRepoAjax
             wp_send_json_error('Repository not found');
         }
 
-        // Cache-first
-        $cacheKey = 'git_manager_cache_repo_status_' . $id;
-        $cached   = get_transient($cacheKey);
-        if (false !== $cached) {
-            wp_send_json_success($cached);
-        }
-
         // Get detailed status
         $status = GitCommandRunner::run($repo->path, 'status --porcelain --branch');
         $lines  = explode("\n", trim($status['output'] ?? ''));
@@ -453,50 +446,69 @@ class MultiRepoAjax
             'modifiedFiles'  => [],
             'stagedFiles'    => [],
             'untrackedFiles' => [],
+            'renamedFiles'   => [],
+            'deletedFiles'   => [],
         ];
 
         foreach ($lines as $line) {
+            if (empty($line)) {
+                continue;
+            }
+
             if (0 === strpos($line, '##')) {
                 // Branch info
-                if (preg_match('/## ([^\.]+)(?:\.\.\.([^ ]+))?/', $line, $matches)) {
-                    $statusInfo['currentBranch'] = $matches[1];
-                    if (isset($matches[2])) {
-                        if (preg_match('/ahead (\d+)/', $line, $ahead)) {
-                            $statusInfo['ahead'] = (int) $ahead[1];
-                        }
+                if (preg_match('/## (.*?)(?:\.\.\.(.*?))?(?: \[(ahead (\d+))?,? ?(behind (\d+))?\])?$/', $line, $matches)) {
+                    $statusInfo['currentBranch'] = $matches[1] ?? 'Unknown';
 
-                        if (preg_match('/behind (\d+)/', $line, $behind)) {
-                            $statusInfo['behind'] = (int) $behind[1];
-                        }
+                    if (!empty($matches[4])) {
+                        $statusInfo['ahead'] = (int) $matches[4];
+                    }
+
+                    if (!empty($matches[6])) {
+                        $statusInfo['behind'] = (int) $matches[6];
                     }
                 }
             } else {
                 // File status
-                if ('' === $line) {
-                    continue;
-                }
-
                 $statusInfo['hasChanges'] = true;
-                $status                   = substr($line, 0, 2);
-                $file                     = substr($line, 3);
 
-                if (' ' !== $status[0] && '?' !== $status[0]) {
-                    $statusInfo['stagedFiles'][] = $file;
+                $status = substr($line, 0, 2);
+                $file   = substr($line, 3);
+
+                switch ($status[0]) {
+                    case 'M':
+                        $statusInfo['stagedFiles'][] = ['file' => $file, 'status' => 'M'];
+                        break;
+                    case 'A':
+                        $statusInfo['stagedFiles'][] = ['file' => $file, 'status' => 'A'];
+                        break;
+                    case 'D':
+                        $statusInfo['deletedFiles'][] = ['file' => $file, 'status' => 'D'];
+                        break;
+                    case 'R':
+                        $statusInfo['renamedFiles'][] = ['file' => $file, 'status' => 'R'];
+                        break;
+                    case 'C':
+                        $statusInfo['stagedFiles'][] = ['file' => $file, 'status' => 'C'];
+                        break;
                 }
 
-                if (' ' !== $status[1] && '?' !== $status[1]) {
-                    $statusInfo['modifiedFiles'][] = $file;
+                switch ($status[1]) {
+                    case 'M':
+                        $statusInfo['modifiedFiles'][] = ['file' => $file, 'status' => 'M'];
+                        break;
+                    case 'D':
+                        $statusInfo['deletedFiles'][] = ['file' => $file, 'status' => 'D'];
+                        break;
                 }
 
                 if ('??' === $status) {
-                    $statusInfo['untrackedFiles'][] = $file;
+                    $statusInfo['untrackedFiles'][] = ['file' => $file, 'status' => '??'];
                 }
             }
         }
-
         // Add repository ID to the response
         $statusInfo['repoId'] = $id;
-        set_transient($cacheKey, $statusInfo, 15);
         wp_send_json_success($statusInfo);
     }
 
@@ -1155,8 +1167,8 @@ class MultiRepoAjax
             if ($statusResult['success']) {
                 $lines = explode("\n", trim($statusResult['output'] ?? ''));
                 foreach ($lines as $line) {
-                    if (0 === strpos($line, '##') && preg_match('/## ([^\.]+)/', $line, $matches)) {
-                        $currentBranch = $matches[1];
+                    if (0 === strpos($line, '##') && preg_match('/^## (.*?)(?:\.{3}|$)/', $line, $matches)) {
+                        $currentBranch = trim($matches[1]);
                         break;
                     }
                 }
@@ -1631,8 +1643,8 @@ class MultiRepoAjax
             if ($statusResult['success']) {
                 $lines = explode("\n", trim($statusResult['output'] ?? ''));
                 foreach ($lines as $line) {
-                    if (0 === strpos($line, '##') && preg_match('/## ([^\.]+)/', $line, $matches)) {
-                        $currentBranch = $matches[1];
+                    if (0 === strpos($line, '##') && preg_match('/^## (.*?)(?:\.{3}|$)/', $line, $matches)) {
+                        $currentBranch = trim($matches[1]);
                         break;
                     }
                 }
@@ -1907,7 +1919,9 @@ class MultiRepoAjax
 
         // Get current branch efficiently
         $currentBranch = $this->getCurrentBranch($resolvedPath);
+        error_log("Repo Manager Debug: Current branch for repo {$id}: '{$currentBranch}' (resolved path: {$resolvedPath})");
         if ('' === $currentBranch || '0' === $currentBranch) {
+            error_log("Repo Manager Debug: Empty branch name detected, returning empty array");
             wp_send_json_success([]);
             return;
         }
@@ -1916,7 +1930,14 @@ class MultiRepoAjax
         $commits = $this->fetchCommitsOptimized($resolvedPath, $limit, $currentBranch);
 
         if (false === $commits) {
+            // Add debugging information
+            error_log("Repo Manager Debug: Failed to fetch commits for repo {$id}, branch: {$currentBranch}, path: {$resolvedPath}");
             wp_send_json_error('Failed to fetch commits');
+        }
+
+        // Add debugging for empty results
+        if (empty($commits)) {
+            error_log("Repo Manager Debug: No commits found for repo {$id}, branch: {$currentBranch}, path: {$resolvedPath}");
         }
 
         // Cache the results for 2 minutes and store key in registry to allow invalidation without direct SQL
@@ -1943,22 +1964,29 @@ class MultiRepoAjax
         // Git v2.22+ has a much more reliable way to get the current branch
         $branchResult = GitCommandRunner::run($repoPath, 'branch --show-current');
         if ($branchResult['success'] && !in_array(trim($branchResult['output']), ['', '0'], true)) {
-            return trim($branchResult['output']);
+            $branch = trim($branchResult['output']);
+            error_log("Repo Manager Debug: Current branch detected (method 1): {$branch}");
+            return $branch;
         }
 
         // Try the fastest method first
         $branchResult = GitCommandRunner::run($repoPath, 'rev-parse --abbrev-ref HEAD');
         if ($branchResult['success'] && !in_array(trim($branchResult['output']), ['', '0'], true)) {
-            return trim($branchResult['output']);
+            $branch = trim($branchResult['output']);
+            error_log("Repo Manager Debug: Current branch detected (method 2): {$branch}");
+            return $branch;
         }
 
         // Fallback: try to get branch from status
         $statusResult = GitCommandRunner::run($repoPath, 'status --porcelain --branch');
         if ($statusResult['success']) {
+            error_log("Repo Manager Debug: Git status output: " . substr($statusResult['output'] ?? '', 0, 300));
             $lines = explode("\n", trim($statusResult['output'] ?? ''));
             foreach ($lines as $line) {
-                if (0 === strpos($line, '##') && preg_match('/## ([^\.]+)/', $line, $matches)) {
-                    return $matches[1];
+                if (0 === strpos($line, '##') && preg_match('/^## (.*?)(?:\.{3}|$)/', $line, $matches)) {
+                    $branch = trim($matches[1]);
+                    error_log("Repo Manager Debug: Current branch detected (method 3): {$branch}");
+                    return $branch;
                 }
             }
         }
@@ -1986,19 +2014,23 @@ class MultiRepoAjax
         // Try the most efficient command first
         $command = sprintf('log %s --pretty=format:"%s" -n %d --no-merges', $safeBranch, $format, $limit);
         $result  = GitCommandRunner::run($repoPath, $command);
+        error_log("Repo Manager Debug: Git command: {$command}, Success: " . ($result['success'] ? 'true' : 'false') . ", Output: " . substr($result['output'] ?? '', 0, 200));
 
         if (!$result['success']) {
             // Fallback 1: Try without --no-merges
             $fallbackCommand = sprintf('log %s --pretty=format:"%s" -n %d', $safeBranch, $format, $limit);
             $result          = GitCommandRunner::run($repoPath, $fallbackCommand);
+            error_log("Repo Manager Debug: Fallback 1 command: {$fallbackCommand}, Success: " . ($result['success'] ? 'true' : 'false') . ", Output: " . substr($result['output'] ?? '', 0, 200));
         }
 
         if (!$result['success']) {
             // Fallback 2: Try simple oneline format
             $simpleCommand = sprintf('log %s --oneline -n %d', $safeBranch, $limit);
             $result        = GitCommandRunner::run($repoPath, $simpleCommand);
+            error_log("Repo Manager Debug: Fallback 2 command: {$simpleCommand}, Success: " . ($result['success'] ? 'true' : 'false') . ", Output: " . substr($result['output'] ?? '', 0, 200));
 
             if (!$result['success']) {
+                error_log("Repo Manager Debug: All git log commands failed for branch {$branch} in {$repoPath}");
                 return false;
             }
 
@@ -3105,7 +3137,7 @@ class MultiRepoAjax
         // Use the same nonce as other endpoints for consistency
         check_ajax_referer('git_manager_action', 'nonce');
 
-        $repos = $this->repositoryManager->getRepositories();
+        $repos = $this->repositoryManager->all();
         $results = [];
 
         foreach ($repos as $repo) {
@@ -3114,13 +3146,15 @@ class MultiRepoAjax
             if (!$resolvedPath || !is_dir($resolvedPath . '/.git')) {
                 $results[$repo->id] = [
                     'status'        => 'Not a valid Git repository or path not found.',
+                    'name'          => $repo->name,
+                    'path'          => $repo->getDisplayPath(),
                     'status_error'  => true,
                     'latest_commit' => '',
                     'commit_error'  => false,
                     'behind'        => 0,
                     'ahead'         => 0,
                     'hasChanges'    => false,
-                    'currentBranch' => '',
+                    'activeBranch' => '',
                     'folderExists'  => false,
                 ];
                 continue;
@@ -3138,6 +3172,8 @@ class MultiRepoAjax
 
             if (!$branchResult['success'] || ('' === $currentBranch || '0' === $currentBranch)) {
                 $results[$repo->id] = [
+                    'name'          => $repo->name,
+                    'path'          => $repo->getDisplayPath(),
                     'status'        => null,
                     'status_error'  => 'Failed to get current branch',
                     'latest_commit' => null,
@@ -3145,7 +3181,7 @@ class MultiRepoAjax
                     'behind'        => 0,
                     'ahead'         => 0,
                     'hasChanges'    => false,
-                    'currentBranch' => null,
+                    'activeBranch' => null,
                     'folderExists'  => true,
                 ];
                 continue;
@@ -3162,6 +3198,8 @@ class MultiRepoAjax
                 }
 
                 $results[$repo->id] = [
+                    'name'          => $repo->name,
+                    'path'          => $repo->getDisplayPath(),
                     'status'        => null,
                     'status_error'  => $errorMessage,
                     'latest_commit' => $commitResult['success'] ? $commitResult['output'] : null,
@@ -3169,7 +3207,7 @@ class MultiRepoAjax
                     'behind'        => 0,
                     'ahead'         => 0,
                     'hasChanges'    => false,
-                    'currentBranch' => $currentBranch,
+                    'activeBranch' => $currentBranch,
                     'folderExists'  => true,
                 ];
                 continue;
@@ -3203,16 +3241,17 @@ class MultiRepoAjax
             }
 
             $results[$repo->id] = [
-                'status'        => $statusResult['success'] ? $statusResult['output'] : null,
-                'status_error'  => $statusResult['success'] ? null : $statusResult['output'],
+                'name'          => $repo->name,
+                'path'          => $repo->getDisplayPath(),
+                'status'        => $statusOutput,
+                'status_error'  => !$statusResult['success'],
                 'latest_commit' => $commitResult['success'] ? $commitResult['output'] : null,
                 'commit_error'  => $commitResult['success'] ? null : $commitResult['output'],
                 'behind'        => $behind,
                 'ahead'         => $ahead,
                 'hasChanges'    => $hasChanges,
-                'currentBranch' => $currentBranch,
+                'activeBranch' => $currentBranch,
                 'folderExists'  => true,
-                'rawOutput'     => $statusOutput,
             ];
         }
 

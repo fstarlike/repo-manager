@@ -49,7 +49,7 @@ class GitController
         add_action('wp_ajax_git_manager_fetch', [$this, 'fetch']);
         add_action('wp_ajax_git_manager_pull', [$this, 'pull']);
         add_action('wp_ajax_git_manager_get_branches', [$this, 'getBranches']);
-        add_action('wp_ajax_git_manager_log', [$this, 'log']);
+        // Note: git_manager_log is handled by MultiRepoAjax for proper commit formatting
         add_action('wp_ajax_git_manager_branch', [$this, 'branch']);
         add_action('wp_ajax_git_manager_latest_commit', [$this, 'latestCommit']);
     }

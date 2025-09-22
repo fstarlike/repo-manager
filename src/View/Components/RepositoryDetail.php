@@ -53,9 +53,7 @@ class RepositoryDetail
                         <?php echo esc_html__('Troubleshoot', 'repo-manager'); ?>
                     </button>
                     <button class="git-action-btn git-secondary-btn" data-action="fix-permission" data-repo-id="" title="<?php echo esc_attr__('Fix permissions', 'repo-manager'); ?>">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                        </svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M8 12h.01"/><path d="M12 12h.01"/><path d="M16 12h.01"/></svg>
                         <?php echo esc_html__('Fix Permissions', 'repo-manager'); ?>
                     </button>
                 </div>
@@ -214,7 +212,7 @@ class RepositoryDetail
                 </div>
                 <div class="repo-changes-content overview-card-body" id="repo-changes-content">
                     <div class="changes-list" id="changes-list">
-                        <p class="value"><?php echo esc_html__('Loading changes...', 'repo-manager'); ?></p>
+                        <p class="value"><?php echo esc_html__('No changes found.', 'repo-manager'); ?></p>
                         <div class="skeleton-list skeleton-placeholder">
                             <div class="skeleton-list-item"><div class="skeleton skeleton-list-icon"></div><div class="skeleton-list-content"><div class="skeleton skeleton-list-title"></div></div></div>
                             <div class="skeleton-list-item"><div class="skeleton skeleton-list-icon"></div><div class="skeleton-list-content"><div class="skeleton skeleton-list-title"></div></div></div>
@@ -231,7 +229,7 @@ class RepositoryDetail
             <div class="overview-card-header">
                 <div class="overview-card-title-wrap">
                     <span class="overview-card-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><line x1="12" x2="12" y1="16" y2="12"/><line x1="12" x2="12.01" y1="8" y2="8"/></svg>
                     </span>
                     <h3 class="overview-card-title"><?php echo esc_html__('Recommendations', 'repo-manager'); ?></h3>
                 </div>
