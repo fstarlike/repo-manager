@@ -9649,6 +9649,78 @@ span#repo-name {
     }
 }
 
+/* Branch Status Indicators */
+.branch-status-indicator {
+    display: flex;
+    align-items: center;
+    gap: var(--gm-space-1);
+    padding: 2px var(--gm-space-2);
+    border-radius: var(--gm-radius-sm);
+    font-size: 11px;
+    font-weight: 500;
+    margin-top: var(--gm-space-1);
+
+    svg {
+        width: 12px;
+        height: 12px;
+        flex-shrink: 0;
+    }
+
+    span {
+        white-space: nowrap;
+    }
+
+    &.diverged {
+        background: rgba(239, 68, 68, 0.1);
+        color: var(--gm-danger);
+        border: 1px solid rgba(239, 68, 68, 0.2);
+
+        svg {
+            color: var(--gm-danger);
+        }
+    }
+
+    &.needs-push {
+        background: rgba(59, 130, 246, 0.1);
+        color: var(--gm-primary);
+        border: 1px solid rgba(59, 130, 246, 0.2);
+
+        svg {
+            color: var(--gm-primary);
+        }
+    }
+
+    &.needs-pull {
+        background: rgba(245, 158, 11, 0.1);
+        color: var(--gm-warning);
+        border: 1px solid rgba(245, 158, 11, 0.2);
+
+        svg {
+            color: var(--gm-warning);
+        }
+    }
+
+    &.synced {
+        background: rgba(16, 185, 129, 0.1);
+        color: var(--gm-success);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+
+        svg {
+            color: var(--gm-success);
+        }
+    }
+
+    &.no-upstream {
+        background: rgba(107, 114, 128, 0.1);
+        color: var(--gm-text-secondary);
+        border: 1px solid rgba(107, 114, 128, 0.2);
+
+        svg {
+            color: var(--gm-text-secondary);
+        }
+    }
+}
+
 .branch-actions {
     display: flex;
     gap: var(--gm-space-2);

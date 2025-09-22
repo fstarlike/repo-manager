@@ -4115,6 +4115,7 @@ class GitManager {
             active_branch: activeBranch,
             local_branches = [],
             remote_branches = [],
+            branch_statuses = {},
         } = data;
 
         if (!branches || branches.length === 0) {
@@ -4202,6 +4203,70 @@ class GitManager {
                     const isMain =
                         branchName === "main" || branchName === "master";
 
+                    // Get branch status information
+                    const branchStatus = branch_statuses[branchName] || {
+                        ahead: 0,
+                        behind: 0,
+                        needsPush: false,
+                        needsPull: false,
+                        isDiverged: false,
+                        hasUpstream: false,
+                    };
+
+                    // Generate status indicators
+                    let statusIndicators = "";
+                    if (branchStatus.isDiverged) {
+                        statusIndicators += `
+                            <div class="branch-status-indicator diverged" title="Branch has diverged from remote">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                                </svg>
+                                <span>Diverged (${branchStatus.ahead} ahead, ${branchStatus.behind} behind)</span>
+                            </div>
+                        `;
+                    } else if (branchStatus.needsPush) {
+                        statusIndicators += `
+                            <div class="branch-status-indicator needs-push" title="Branch needs to be pushed">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="m18 9-6-6-6 6"/>
+                                    <path d="M12 3v14"/>
+                                    <path d="M5 21h14"/>
+                                </svg>
+                                <span>Needs push (${branchStatus.ahead} commits)</span>
+                            </div>
+                        `;
+                    } else if (branchStatus.needsPull) {
+                        statusIndicators += `
+                            <div class="branch-status-indicator needs-pull" title="Branch needs to be pulled">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M12 17V3"/>
+                                    <path d="m6 11 6 6 6-6"/>
+                                    <path d="M19 21H5"/>
+                                </svg>
+                                <span>Needs pull (${branchStatus.behind} commits)</span>
+                            </div>
+                        `;
+                    } else if (branchStatus.hasUpstream) {
+                        statusIndicators += `
+                            <div class="branch-status-indicator synced" title="Branch is up to date with remote">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M20 6L9 17l-5-5"/>
+                                </svg>
+                                <span>Synced</span>
+                            </div>
+                        `;
+                    } else {
+                        statusIndicators += `
+                            <div class="branch-status-indicator no-upstream" title="Branch has no upstream tracking">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <path d="M12 6v6l4 2"/>
+                                </svg>
+                                <span>No upstream</span>
+                            </div>
+                        `;
+                    }
+
                     branchesHTML += `
                         <div class="branch-item ${isCurrent ? "current" : ""} ${
                         isMain ? "main-branch" : ""
@@ -4226,6 +4291,7 @@ class GitManager {
                                             ? '<span class="branch-status main">Main</span>'
                                             : ""
                                     }
+                                    ${statusIndicators}
                                 </div>
                             </div>
                             <div class="branch-actions">

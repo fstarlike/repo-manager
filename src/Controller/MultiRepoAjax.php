@@ -1784,8 +1784,15 @@ class MultiRepoAjax
 
         $resolvedPath = $this->repositoryManager->resolvePath($repo->path);
 
-        // Get local branches
-        $localResult = GitCommandRunner::run($resolvedPath, 'branch');
+        // First, fetch latest remote information (don't fail if this doesn't work)
+        $fetchResult = GitCommandRunner::run($resolvedPath, 'fetch --all --prune', ['low_priority' => true]);
+        if (!$fetchResult['success']) {
+            // Log the fetch error but don't fail the entire operation
+            error_log('Repo Manager: Failed to fetch remote branches: ' . ($fetchResult['output'] ?? ''));
+        }
+
+        // Get local branches with verbose output to include tracking info
+        $localResult = GitCommandRunner::run($resolvedPath, 'branch -vv');
         if (!$localResult['success']) {
             wp_send_json_error('Failed to get local branches: ' . ($localResult['output'] ?? ''));
         }
@@ -1800,16 +1807,54 @@ class MultiRepoAjax
         $activeBranchResult = GitCommandRunner::run($resolvedPath, 'rev-parse --abbrev-ref HEAD');
         $activeBranch = $activeBranchResult['success'] ? trim($activeBranchResult['output']) : '';
 
-        // Parse local branches
+        // Parse local branches with status information
         $localBranches = [];
+        $branchStatuses = [];
+
         if (!empty($localResult['output'])) {
             foreach (explode("\n", trim($localResult['output'])) as $line) {
                 $line = trim($line);
                 if (!empty($line)) {
                     // Remove * marker for current branch
+                    $isCurrent = strpos($line, '*') === 0;
                     $branchName = trim(str_replace('*', '', $line));
+
                     if (!empty($branchName)) {
+                        // Extract ahead/behind information from verbose output
+                        $ahead = 0;
+                        $behind = 0;
+                        $hasUpstream = false;
+
+                        // Check if branch has upstream tracking
+                        if (preg_match('/\[(.*?)\]/', $line, $matches)) {
+                            $upstreamInfo = $matches[1];
+                            $hasUpstream = true;
+
+                            // Extract ahead/behind numbers with better error handling
+                            if (preg_match('/ahead (\d+)/', $upstreamInfo, $aheadMatches)) {
+                                $ahead = max(0, (int) $aheadMatches[1]); // Ensure non-negative
+                            }
+                            if (preg_match('/behind (\d+)/', $upstreamInfo, $behindMatches)) {
+                                $behind = max(0, (int) $behindMatches[1]); // Ensure non-negative
+                            }
+
+                            // Handle special cases like "gone" status
+                            if (strpos($upstreamInfo, 'gone') !== false) {
+                                $hasUpstream = false; // Reset upstream flag if branch is gone
+                            }
+                        }
+
                         $localBranches[] = $branchName;
+                        $branchStatuses[$branchName] = [
+                            'name' => $branchName,
+                            'isCurrent' => $isCurrent,
+                            'ahead' => $ahead,
+                            'behind' => $behind,
+                            'hasUpstream' => $hasUpstream,
+                            'needsPush' => $ahead > 0,
+                            'needsPull' => $behind > 0,
+                            'isDiverged' => $ahead > 0 && $behind > 0,
+                        ];
                     }
                 }
             }
@@ -1825,6 +1870,21 @@ class MultiRepoAjax
                     $branchName = preg_replace('/^origin\//', '', $line);
                     if (!empty($branchName)) {
                         $remoteBranches[] = $branchName;
+
+                        // If this remote branch doesn't have a local equivalent, add it to statuses
+                        if (!isset($branchStatuses[$branchName])) {
+                            $branchStatuses[$branchName] = [
+                                'name' => $branchName,
+                                'isCurrent' => false,
+                                'ahead' => 0,
+                                'behind' => 0,
+                                'hasUpstream' => false,
+                                'needsPush' => false,
+                                'needsPull' => false,
+                                'isDiverged' => false,
+                                'isRemoteOnly' => true,
+                            ];
+                        }
                     }
                 }
             }
@@ -1838,6 +1898,7 @@ class MultiRepoAjax
             'active_branch' => $activeBranch,
             'local_branches' => $localBranches,
             'remote_branches' => $remoteBranches,
+            'branch_statuses' => $branchStatuses,
         ]);
     }
 
