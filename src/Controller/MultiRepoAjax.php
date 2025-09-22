@@ -314,7 +314,7 @@ class MultiRepoAjax
         $resolvedPath = $this->repositoryManager->resolvePath($repo->path);
 
         // Fetch latest changes from remote
-        $remoteResult = SecureGitRunner::runIndirectory($resolvedPath, 'remote');
+        $remoteResult = SecureGitRunner::runInDirectory($resolvedPath, 'remote');
         if ($remoteResult['success'] && !empty(trim($remoteResult['output']))) {
             SecureGitRunner::runInDirectory($resolvedPath, 'fetch');
         }
@@ -3102,7 +3102,8 @@ class MultiRepoAjax
      */
     public function getBulkRepoStatus(): void
     {
-        check_ajax_referer('wp-git-manager-nonce', 'nonce');
+        // Use the same nonce as other endpoints for consistency
+        check_ajax_referer('git_manager_action', 'nonce');
 
         $repos = $this->repositoryManager->getRepositories();
         $results = [];

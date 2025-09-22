@@ -2793,6 +2793,105 @@ class GitManager {
         });
     }
 
+    /**
+     * Update a simple date/time label if present
+     */
+    updateDateTime() {
+        try {
+            const el = document.getElementById("git-date-time");
+            if (!el) return;
+            const now = new Date();
+            el.textContent = now.toLocaleString();
+        } catch (e) {}
+    }
+
+    /**
+     * Fetch ahead/behind/changes for all repositories and update UI
+     */
+    async bulkUpdateStatus() {
+        try {
+            if (typeof gitManagerAjax === "undefined") return;
+
+            const formData = new FormData();
+            formData.append("action", gitManagerAjax.actions.bulk_repo_status);
+            formData.append("nonce", gitManagerAjax.nonce);
+
+            const response = await fetch(gitManagerAjax.ajaxurl, {
+                method: "POST",
+                body: formData,
+            });
+
+            if (!response.ok) {
+                return;
+            }
+
+            const result = await response.json();
+            if (!result || !result.success || !result.data) {
+                return;
+            }
+
+            const reposData = result.data;
+            // Update list cards and selected repo overview
+            Object.keys(reposData).forEach((repoId) => {
+                const repo = reposData[repoId] || {};
+                const card = document.querySelector(
+                    `.git-repo-card[data-repo-id="${repoId}"]`
+                );
+                if (card && typeof this.updateRepoCard === "function") {
+                    this.updateRepoCard(card, repo);
+                }
+
+                if (
+                    this.currentRepo &&
+                    String(this.currentRepo) === String(repoId)
+                ) {
+                    this.updateOverviewSection(repo);
+                }
+            });
+
+            if (typeof this.updateOverallStatus === "function") {
+                try {
+                    this.updateOverallStatus(Object.values(reposData));
+                } catch (e) {}
+            }
+        } catch (e) {}
+    }
+
+    /**
+     * Backward-compatible toast alias using showNotification
+     */
+    showToast(message, type = "info", options = {}) {
+        try {
+            return this.showNotification(message, type, options);
+        } catch (e) {}
+        return null;
+    }
+
+    /**
+     * Update any overall counters/indicators if present
+     */
+    updateOverallStatus(reposArray) {
+        try {
+            const repos = Array.isArray(reposArray) ? reposArray : [];
+            const totalAhead = repos.reduce(
+                (sum, r) => sum + (parseInt(r?.ahead ?? 0, 10) || 0),
+                0
+            );
+            const totalBehind = repos.reduce(
+                (sum, r) => sum + (parseInt(r?.behind ?? 0, 10) || 0),
+                0
+            );
+
+            const aheadEl = document.getElementById("git-overall-ahead");
+            const behindEl = document.getElementById("git-overall-behind");
+            if (aheadEl) aheadEl.textContent = String(totalAhead);
+            if (behindEl) behindEl.textContent = String(totalBehind);
+
+            const liveBadge = document.getElementById("git-live-badge");
+            if (liveBadge) liveBadge.classList.add("is-live");
+        } catch (e) {}
+    }
+
     async refreshRepositoriesSilently() {
         try {
             const repos = await this.fetchRepositories();
@@ -7538,7 +7637,9 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         } else {
         }
-    } catch (error) {}
+    } catch (error) {
+        console.log(error);
+    }
 });
 // Note: Removed global error handlers to allow WordPress to handle errors properly
 
