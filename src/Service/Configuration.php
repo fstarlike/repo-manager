@@ -22,7 +22,7 @@ class Configuration
             'max_execution_time'      => 30,
             'max_output_size'         => 1048576, // 1MB
             'rate_limit_window'       => 60, // 1 minute
-            'rate_limit_max_requests' => 10,
+            'rate_limit_max_requests' => 30,
             'allowed_commands'        => [
                 'status', 'log', 'branch', 'checkout', 'pull', 'push', 'fetch',
                 'clone', 'config', 'remote', 'add', 'commit', 'diff', 'show',
@@ -183,8 +183,8 @@ class Configuration
                 $errors[] = 'Max output size must be between 1KB and 10MB';
             }
 
-            if (isset($security['rate_limit_max_requests']) && (!is_numeric($security['rate_limit_max_requests']) || $security['rate_limit_max_requests'] < 1 || $security['rate_limit_max_requests'] > 100)) {
-                $errors[] = 'Rate limit max requests must be between 1 and 100';
+            if (isset($security['rate_limit_max_requests']) && (!is_numeric($security['rate_limit_max_requests']) || $security['rate_limit_max_requests'] < 1 || $security['rate_limit_max_requests'] > 200)) {
+                $errors[] = 'Rate limit max requests must be between 1 and 200';
             }
         }
 

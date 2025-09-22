@@ -203,6 +203,14 @@ class RateLimiter
     }
 
     /**
+     * Clear all rate limit data
+     */
+    public function clearAllRateLimits(): void
+    {
+        delete_option(self::RATE_LIMIT_OPTION);
+    }
+
+    /**
      * Apply rate limiting to AJAX request
      */
     public function checkAjaxRateLimit(string $action): bool
@@ -217,6 +225,8 @@ class RateLimiter
             'git_manager_pull'        => ['max' => 20, 'window' => 60], // 20 pulls per minute
             'git_manager_push'        => ['max' => 10, 'window' => 60], // 10 pushes per minute
             'git_manager_fetch'       => ['max' => 30, 'window' => 60], // 30 fetches per minute
+            'git_manager_get_branches' => ['max' => 50, 'window' => 60], // 50 branch requests per minute
+            'git_manager_bulk_repo_status' => ['max' => 100, 'window' => 60], // 100 status requests per minute
         ];
 
         $limits = $actionLimits[$action] ?? null;

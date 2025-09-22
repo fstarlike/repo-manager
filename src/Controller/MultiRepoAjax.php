@@ -670,8 +670,19 @@ class MultiRepoAjax
         $token      = sanitize_text_field(wp_unslash($_POST['token'] ?? ''));
         $privateKey = empty($_POST['private_key']) ? '' : sanitize_textarea_field(wp_unslash($_POST['private_key']));
 
-        if (! $remote || ! $target || ! $name) {
-            wp_send_json_error('Missing required data');
+        if (! $remote || ! $target) {
+            wp_send_json_error('Missing required data: remote=' . ($remote ? 'OK' : 'MISSING') . ', target=' . ($target ? 'OK' : 'MISSING'));
+        }
+
+        // If name is empty, extract it from URL
+        if (empty($name)) {
+            $urlParts = explode('/', rtrim($remote, '/'));
+            $name = basename($urlParts[count($urlParts) - 1], '.git');
+        }
+
+        // Ensure name is not empty
+        if (empty($name)) {
+            wp_send_json_error('Repository name could not be determined from URL');
         }
 
         // Construct absolute path if relative path is provided
@@ -685,6 +696,22 @@ class MultiRepoAjax
 
         if (! $this->repositoryManager->validatePath(dirname($absoluteTarget))) {
             wp_send_json_error('Invalid target parent directory');
+        }
+
+        // Check if target directory already exists
+        if (is_dir($absoluteTarget)) {
+            // Check if directory is empty
+            $files = scandir($absoluteTarget);
+            $isEmpty = count($files) <= 2; // Only '.' and '..' entries
+
+            if (!$isEmpty) {
+                wp_send_json_error('Directory already exists and is not empty: ' . $absoluteTarget);
+            }
+
+            // Directory exists but is empty, remove it to allow clone
+            if (!wp_rmdir($absoluteTarget)) {
+                wp_send_json_error('Failed to remove existing empty directory: ' . $absoluteTarget);
+            }
         }
 
         // Prepare environment for Git
@@ -3065,7 +3092,9 @@ class MultiRepoAjax
     {
         $this->ensureAllowed();
 
-        check_ajax_referer('git_manager_action', 'nonce');
+        if (!$this->rateLimiter->checkAjaxRateLimit('git_manager_bulk_repo_status')) {
+            wp_send_json_error('Rate limit exceeded');
+        }
 
         // Optional hint from clients (e.g., floating widget) to prefer cached results
         // phpcs:ignore WordPress.Security.NonceVerification.Missing

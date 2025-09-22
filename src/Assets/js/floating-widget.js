@@ -242,8 +242,12 @@
                     {}
                 );
 
-                if (response.success && response.data) {
-                    this.repositories = response.data;
+                if (
+                    response.success &&
+                    response.data &&
+                    response.data.repositories
+                ) {
+                    this.repositories = response.data.repositories;
                     this.populateRepositorySelect();
                     // Remove duplicate call - this will be handled by startPolling()
 
@@ -266,6 +270,14 @@
                         this.isInitializing = false;
                         this.checkAllRepositoriesForUpdates();
                     }
+                } else if (
+                    response.success &&
+                    response.data &&
+                    Array.isArray(response.data.repositories)
+                ) {
+                    // Handle case where repositories array is empty (no repositories)
+                    this.repositories = [];
+                    this.populateRepositorySelect();
                 }
             } catch (error) {
                 this.showError(

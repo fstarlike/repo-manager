@@ -87,7 +87,7 @@ class ConfigurationTest extends TestCase
             'security' => [
                 'max_execution_time'      => 500, // Too high
                 'max_output_size'         => 500, // Too low
-                'rate_limit_max_requests' => 150, // Too high
+                'rate_limit_max_requests' => 250, // Too high
             ],
             'performance' => [
                 'cache_ttl'        => 30, // Too low

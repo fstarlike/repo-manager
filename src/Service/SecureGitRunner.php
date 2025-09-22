@@ -540,6 +540,22 @@ class SecureGitRunner
                 return ['success' => false, 'output' => 'Failed to create parent directory: ' . $parentDir, 'cmd' => 'clone'];
             }
 
+            // Check if target directory already exists
+            if (is_dir($targetDirectory)) {
+                // Check if directory is empty
+                $files = scandir($targetDirectory);
+                $isEmpty = count($files) <= 2; // Only '.' and '..' entries
+
+                if (!$isEmpty) {
+                    return ['success' => false, 'output' => 'Destination path already exists and is not empty: ' . $targetDirectory, 'cmd' => 'clone'];
+                }
+
+                // Directory exists but is empty, remove it to allow clone
+                if (!wp_rmdir($targetDirectory)) {
+                    return ['success' => false, 'output' => 'Failed to remove existing empty directory: ' . $targetDirectory, 'cmd' => 'clone'];
+                }
+            }
+
             $envPrefix = self::buildEnvPrefix($opts);
             $cmd       = $envPrefix . 'git clone ' . escapeshellarg($remoteUrl) . ' ' . escapeshellarg($targetDirectory);
             $result    = self::executeCommand($cmd);

@@ -207,8 +207,9 @@ class RepositoryController
         }
 
         try {
-            $url    = sanitize_url(wp_unslash($_POST['url'] ?? ''));
-            $path   = sanitize_text_field(wp_unslash($_POST['path'] ?? ''));
+            // Handle both parameter naming conventions
+            $url    = sanitize_url(wp_unslash($_POST['url'] ?? $_POST['remote'] ?? ''));
+            $path   = sanitize_text_field(wp_unslash($_POST['path'] ?? $_POST['target'] ?? ''));
             $name   = sanitize_text_field(wp_unslash($_POST['name'] ?? ''));
             $branch = sanitize_text_field(wp_unslash($_POST['branch'] ?? ''));
 
@@ -216,13 +217,49 @@ class RepositoryController
                 throw new \Exception('URL and path are required');
             }
 
+            // If name is empty, extract it from URL
+            if (empty($name)) {
+                $urlParts = explode('/', rtrim($url, '/'));
+                $name = basename($urlParts[count($urlParts) - 1], '.git');
+            }
+
+            // Ensure name is not empty
+            if (empty($name)) {
+                throw new \Exception('Repository name could not be determined from URL');
+            }
+
+            // Construct absolute path if relative path is provided
+            $absolutePath = $path;
+            if (!path_is_absolute($path)) {
+                $absolutePath = ABSPATH . ltrim($path, '/');
+            }
+
+            // Add repository name to the target path
+            $absolutePath = rtrim($absolutePath, '/\\') . DIRECTORY_SEPARATOR . $name;
+
             // Validate path
-            if (!$this->repositoryManager->validatePath($path)) {
+            if (!$this->repositoryManager->validatePath(dirname($absolutePath))) {
                 throw new \Exception('Invalid repository path');
             }
 
+            // Check if target directory already exists
+            if (is_dir($absolutePath)) {
+                // Check if directory is empty
+                $files = scandir($absolutePath);
+                $isEmpty = count($files) <= 2; // Only '.' and '..' entries
+
+                if (!$isEmpty) {
+                    throw new \Exception('Directory already exists and is not empty: ' . $absolutePath);
+                }
+
+                // Directory exists but is empty, remove it to allow clone
+                if (!wp_rmdir($absolutePath)) {
+                    throw new \Exception('Failed to remove existing empty directory: ' . $absolutePath);
+                }
+            }
+
             // Clone the repository
-            $result = $this->cloneRepository($url, $path, $branch);
+            $result = $this->cloneRepository($url, $absolutePath, $branch);
 
             if (!$result['success']) {
                 throw new \Exception($result['output']);
@@ -230,8 +267,8 @@ class RepositoryController
 
             // Add to repository manager
             $data = [
-                'name'      => $name ?: basename($path),
-                'path'      => $path,
+                'name'      => $name,
+                'path'      => $absolutePath,
                 'remoteUrl' => $url,
                 'authType'  => 'ssh',
             ];
@@ -240,7 +277,7 @@ class RepositoryController
 
             $this->auditLogger->logRepositoryOperation('clone', $repository->id, [
                 'url'    => $url,
-                'path'   => $path,
+                'path'   => $absolutePath,
                 'branch' => $branch,
             ]);
 
@@ -252,7 +289,7 @@ class RepositoryController
             $this->auditLogger->log('error', 'repository_clone_failed', [
                 'error' => $exception->getMessage(),
                 'url'   => $url ?? null,
-                'path'  => $path ?? null,
+                'path'  => $absolutePath ?? null,
             ]);
             wp_send_json_error($exception->getMessage());
         }
